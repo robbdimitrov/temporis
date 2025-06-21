@@ -13,17 +13,19 @@ import (
 type Manager struct {
 	Partition *model.Partition
 	mu        sync.Mutex
+	hasFired  func(timerID string) bool
 }
 
 // NewManager creates a new Manager for a partition.
-func NewManager(partition *model.Partition) *Manager {
+func NewManager(partition *model.Partition, hasFired func(timerID string) bool) *Manager {
 	return &Manager{
 		Partition: partition,
+		hasFired:  hasFired,
 	}
 }
 
 // StartTimers starts all timers in the partition, using the provided recordFiring function to log firings.
-func (m *Manager) StartTimers(ctx context.Context, recordFiring func(timerID string, t time.Time) error) {
+func (m *Manager) StartTimers(ctx context.Context, recordFiring func(timerID string, t time.Time) bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -47,15 +49,18 @@ func (m *Manager) StartTimers(ctx context.Context, recordFiring func(timerID str
 }
 
 // startTimer executes a single timer's logic.
-func (m *Manager) startTimer(ctx context.Context, timer *model.Timer, recordFiring func(timerID string, t time.Time) error) {
+func (m *Manager) startTimer(ctx context.Context, timer *model.Timer, recordFiring func(timerID string, t time.Time) bool) {
 	if timer.Once {
+		// Check if timer has already fired
+		if m.hasFired(timer.ID) {
+			log.Printf("One-time timer %s has already fired, skipping", timer.ID)
+			return
+		}
 		select {
 		case <-time.After(timer.Interval):
 			log.Printf("Firing one-time timer %s at %v", timer.ID, time.Now())
 			timer.Callback()
-			if err := recordFiring(timer.ID, time.Now()); err != nil {
-				log.Printf("Failed to record firing for timer %s: %v", timer.ID, err)
-			}
+			recordFiring(timer.ID, time.Now())
 		case <-ctx.Done():
 			log.Printf("Timer %s cancelled by context: %v", timer.ID, ctx.Err())
 			return
@@ -72,9 +77,7 @@ func (m *Manager) startTimer(ctx context.Context, timer *model.Timer, recordFiri
 		case t := <-ticker.C:
 			log.Printf("Firing recurring timer %s at %v", timer.ID, t)
 			timer.Callback()
-			if err := recordFiring(timer.ID, time.Now()); err != nil {
-				log.Printf("Failed to record firing for timer %s: %v", timer.ID, err)
-			}
+			recordFiring(timer.ID, time.Now())
 		case <-ctx.Done():
 			log.Printf("Timer %s cancelled by context: %v", timer.ID, ctx.Err())
 			return

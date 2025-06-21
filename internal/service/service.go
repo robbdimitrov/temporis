@@ -93,7 +93,7 @@ func (s *Service) syncWithCluster(ctx context.Context) {
 		log.Printf("Partition %s assigned to node %s (%d timers)", p.ID, owner, len(p.Timers))
 		if owner == s.cfg.ServiceName {
 			log.Printf("This pod (%s) owns partition %s", s.cfg.ServiceName, p.ID)
-			newPartitions[p.ID] = partition.NewManager(p)
+			newPartitions[p.ID] = partition.NewManager(p, s.redisStore.HasFired)
 		}
 	}
 
