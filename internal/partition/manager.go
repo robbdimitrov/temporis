@@ -34,6 +34,10 @@ func (m *Manager) StartTimers(ctx context.Context, recordFiring func(timerID str
 	}
 
 	for _, timer := range m.Partition.Timers {
+		if timer.ID == "" || timer.Interval <= 0 {
+			log.Printf("Invalid timer for partition %s: ID=%s, Interval=%v, skipping", m.Partition.ID, timer.ID, timer.Interval)
+			continue
+		}
 		log.Printf("Starting timer %s (partition: %s, interval: %v, once: %v)", timer.ID, timer.Partition, timer.Interval, timer.Once)
 		go m.startTimer(ctx, timer, recordFiring)
 	}
@@ -41,21 +45,17 @@ func (m *Manager) StartTimers(ctx context.Context, recordFiring func(timerID str
 
 // startTimer executes a single timer's logic.
 func (m *Manager) startTimer(ctx context.Context, timer *model.Timer, recordFiring func(timerID string, t time.Time) error) {
-	if timer.Interval <= 0 {
-		log.Printf("Invalid interval for timer %s: %v, skipping", timer.ID, timer.Interval)
-		return
-	}
-
+	log.Printf("Timer %s goroutine started", timer.ID)
 	if timer.Once {
 		select {
 		case <-time.After(timer.Interval):
-			log.Printf("Firing one-time timer %s", timer.ID)
+			log.Printf("Firing one-time timer %s at %v", timer.ID, time.Now())
 			timer.Callback()
 			if err := recordFiring(timer.ID, time.Now()); err != nil {
 				log.Printf("Failed to record firing for timer %s: %v", timer.ID, err)
 			}
 		case <-ctx.Done():
-			log.Printf("Timer %s cancelled by context", timer.ID)
+			log.Printf("Timer %s cancelled by context: %v", timer.ID, ctx.Err())
 			return
 		}
 		return
@@ -65,16 +65,17 @@ func (m *Manager) startTimer(ctx context.Context, timer *model.Timer, recordFiri
 	ticker := time.NewTicker(timer.Interval)
 	defer ticker.Stop()
 
+	log.Printf("Recurring timer %s ticker started with interval %v", timer.ID, timer.Interval)
 	for {
 		select {
-		case <-ticker.C:
-			log.Printf("Firing recurring timer %s", timer.ID)
+		case t := <-ticker.C:
+			log.Printf("Firing recurring timer %s at %v", timer.ID, t)
 			timer.Callback()
 			if err := recordFiring(timer.ID, time.Now()); err != nil {
 				log.Printf("Failed to record firing for timer %s: %v", timer.ID, err)
 			}
 		case <-ctx.Done():
-			log.Printf("Timer %s cancelled by context", timer.ID)
+			log.Printf("Timer %s cancelled by context: %v", timer.ID, ctx.Err())
 			return
 		}
 	}

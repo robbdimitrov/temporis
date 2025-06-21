@@ -184,7 +184,6 @@ The service will detect changes during its next sync cycle (every 5 seconds).
 ### Monitoring
 - **Logs**: Monitor pod logs for node joins/leaves, partition assignments, and errors.
 - **Redis**: Inspect `firing:<timer-id>` keys for timer execution history.
-- **Future Enhancements**: Add Prometheus metrics for node count, partition distribution, and timer firings.
 
 ## How It Works
 1. **Service Startup**:
@@ -212,23 +211,6 @@ The service will detect changes during its next sync cycle (every 5 seconds).
    - Timers for unowned partitions are stopped gracefully using context cancellation.
 
 ## Development
-### Testing
-Run unit tests:
-```bash
-go test ./...
-```
-
-Add integration tests for PostgreSQL, Redis, and gossip interactions. Example:
-```go
-func TestGetPartitions(t *testing.T) {
-    store, err := storage.NewPostgresStore("postgres://user:pass@localhost:5432/timers?sslmode=disable")
-    if err != nil {
-        t.Fatalf("Failed to init postgres: %v", err)
-    }
-    defer store.Close()
-    // Verify partition and timer loading
-}
-```
 
 ### Debugging
 - Enable verbose logging in `memberlist` by setting `LogOutput` in `gossip.NewGossipManager`.
@@ -238,7 +220,6 @@ func TestGetPartitions(t *testing.T) {
 - **Metrics**: Integrate Prometheus for monitoring node count, partition assignments, and timer firings.
 - **Health Checks**: Add HTTP endpoints for readiness and liveness probes.
 - **Retry Logic**: Implement retries for database connections and Redis writes.
-- **Bootstrap**: Specify seed nodes for gossip in `gossipMgr.Join` for large clusters.
 
 ## Troubleshooting
 - **Pods Not Discovering Each Other**:

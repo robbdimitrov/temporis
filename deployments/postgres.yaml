@@ -23,11 +23,17 @@ spec:
             name: postgres-secret
         volumeMounts:
         - mountPath: /var/lib/postgresql/data
-          name: postgresdata
+          name: postgres-data
+        - name: initdb-scripts
+          mountPath: /docker-entrypoint-initdb.d
+          readOnly: true
       volumes:
-      - name: postgresdata
+      - name: postgres-data
         persistentVolumeClaim:
           claimName: postgres-volume-claim
+      - name: initdb-scripts
+        configMap:
+          name: postgres-initdb-config
 ---
 apiVersion: v1
 kind: Service
@@ -80,3 +86,25 @@ spec:
     - ReadWriteMany
   hostPath:
     path: "/data/postgresql"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-initdb-config
+data:
+  schema.sql: |
+    CREATE DATABASE timers;
+
+    \c timers
+
+    CREATE TABLE partitions (
+        id VARCHAR(255) PRIMARY KEY
+    );
+
+    CREATE TABLE timers (
+        id SERIAL PRIMARY KEY,
+        partition_id VARCHAR(255) REFERENCES partitions(id),
+        name VARCHAR(100),
+        interval_ms BIGINT NOT NULL,
+        once BOOLEAN NOT NULL
+    );
