@@ -27,7 +27,9 @@ The service is built as a Go microservice with the following components:
 timer-service/
 ├── cmd/
 │   └── server/
-│       └── main.go             # Entry point for the service
+│       └── main.go            # Entry point for the service
+├── database/
+│   ├── schema.sql             # Postgres init script
 ├── internal/
 │   ├── config/                # Configuration loading
 │   ├── gossip/                # Gossip protocol implementation
@@ -93,10 +95,10 @@ For Kubernetes, these are set via `deployments/configmap.yaml` and `fieldRef` fo
 ### 4. Initialize PostgreSQL
 Apply the schema to your PostgreSQL database:
 ```sql
-psql -h <postgres-host> -U <user> -d timers < schema.sql
+psql -h <postgres-host> -U <user> -d timers < ./database/schema.sql
 ```
 
-Schema (`schema.sql`):
+Schema (`./database/schema.sql`):
 ```sql
 CREATE TABLE partitions (
     id VARCHAR(255) PRIMARY KEY
