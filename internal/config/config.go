@@ -10,6 +10,7 @@ type Config struct {
 	GossipPort  int64
 	PostgresURL string
 	RedisURL    string
+	SeedNode    string
 }
 
 func Load() (*Config, error) {
@@ -18,6 +19,7 @@ func Load() (*Config, error) {
 		GossipPort:  parseInt(getEnv("GOSSIP_PORT", "7946")),
 		PostgresURL: getEnv("POSTGRES_URL", "postgres://postgres:password@localhost:5432/timers?sslmode=disable"),
 		RedisURL:    getEnv("REDIS_URL", "redis://localhost:6379"),
+		SeedNode:    getEnv("SEED_NODE", "localhost:7946"),
 	}, nil
 }
 

@@ -34,3 +34,5 @@ spec:
             configMapKeyRef:
               name: timer-config
               key: redis-url
+        - name: SEED_NODE
+          value: timer-service.timers.svc.cluster.local:7946
