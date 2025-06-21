@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: timer-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: timer-service
+  template:
+    metadata:
+      labels:
+      app: timer-service
+    spec:
+      containers:
+      - name: timer-service
+        image: timer-service:latest
+        ports:
+        - containerPort: 7946
+          name: gossip
+        env:
+        - name: SERVICE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POSTGRES_URL
+          valueFrom:
+            configMapKeyRef:
+              name: timer-config
+              key: postgres-url
+        - name: REDIS_URL
+          valueFrom:
+            configMapKeyRef:
+              name: timer-config
+              key: redis-url
