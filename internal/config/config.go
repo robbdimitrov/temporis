@@ -16,7 +16,7 @@ func Load() (*Config, error) {
 	return &Config{
 		ServiceName: getEnv("SERVICE_NAME", "timer-service"),
 		GossipPort:  parseInt(getEnv("GOSSIP_PORT", "7946")),
-		PostgresURL: getEnv("POSTGRES_URL", "postgres://user:pass@localhost:5432/timers?sslmode=disable"),
+		PostgresURL: getEnv("POSTGRES_URL", "postgres://postgres:password@localhost:5432/timers?sslmode=disable"),
 		RedisURL:    getEnv("REDIS_URL", "redis://localhost:6379"),
 	}, nil
 }

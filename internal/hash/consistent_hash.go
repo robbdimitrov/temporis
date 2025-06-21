@@ -80,3 +80,15 @@ func (ch *ConsistentHash) GetNode(key string) string {
 	}
 	return ch.ring[idx].node
 }
+
+// Nodes returns the set of nodes currently in the hash ring
+func (ch *ConsistentHash) Nodes() map[string]bool {
+	ch.mu.RLock()
+	defer ch.mu.RUnlock()
+
+	nodes := make(map[string]bool)
+	for node := range ch.nodes {
+		nodes[node] = true
+	}
+	return nodes
+}
