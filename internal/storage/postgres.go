@@ -2,6 +2,7 @@ package storage
 
 import (
 	"database/sql"
+	"log"
 	"time"
 	"timer-service/internal/model"
 
@@ -54,7 +55,9 @@ func (s *PostgresStore) GetPartitions() ([]*model.Partition, error) {
 				Partition: tPartitionID,
 				Interval:  time.Duration(intervalMs) * time.Millisecond,
 				Once:      once,
-				Callback:  func() { /* Placeholder */ },
+				Callback: func() {
+					log.Printf("I'm a timer %s and I just did fire!", tID)
+				},
 			})
 		}
 	}

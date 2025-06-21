@@ -1,6 +1,7 @@
 package hash
 
 import (
+	"log"
 	"sort"
 	"strconv"
 	"sync"
@@ -32,8 +33,10 @@ func (ch *ConsistentHash) AddNode(node string) {
 	defer ch.mu.Unlock()
 
 	if ch.nodes[node] {
+		log.Printf("Node %s already in hash ring, skipping", node)
 		return
 	}
+	log.Printf("Adding node %s to hash ring", node)
 	ch.nodes[node] = true
 
 	for i := 0; i < ch.replicas; i++ {
@@ -50,8 +53,10 @@ func (ch *ConsistentHash) RemoveNode(node string) {
 	defer ch.mu.Unlock()
 
 	if !ch.nodes[node] {
+		log.Printf("Node %s not in hash ring, skipping", node)
 		return
 	}
+	log.Printf("Removing node %s from hash ring", node)
 	delete(ch.nodes, node)
 
 	newRing := make([]hashKey, 0, len(ch.ring))

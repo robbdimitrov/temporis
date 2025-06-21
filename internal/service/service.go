@@ -38,8 +38,9 @@ func NewService(cfg *config.Config, pgStore *storage.PostgresStore, redisStore *
 }
 
 func (s *Service) Run(ctx context.Context) error {
-	// Join gossip cluster
-	if err := s.gossipMgr.Join([]string{}); err != nil {
+	// Join gossip cluster with seed nodes
+	seedNodes := []string{"timer-service.timers.svc.cluster.local:7946"} // Adjust for your cluster
+	if err := s.gossipMgr.Join(seedNodes); err != nil {
 		log.Printf("Failed to join gossip: %v", err)
 	}
 
@@ -65,6 +66,7 @@ func (s *Service) syncWithCluster(ctx context.Context) {
 
 	// Step 1: Get the current list of active nodes from the gossip protocol
 	currentNodes := s.gossipMgr.Members()
+	log.Printf("Sync cycle: current nodes = %v", currentNodes)
 
 	// Step 2: Track nodes currently in the hash ring
 	existingNodes := make(map[string]bool)
@@ -82,7 +84,6 @@ func (s *Service) syncWithCluster(ctx context.Context) {
 	// Remove nodes that are no longer in the member list
 	for node := range existingNodes {
 		s.hashRing.RemoveNode(node)
-		log.Printf("Removed node %s from hash ring", node)
 	}
 
 	// Step 4: Load partitions from PostgreSQL

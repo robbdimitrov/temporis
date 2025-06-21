@@ -2,7 +2,7 @@ package partition
 
 import (
 	"context"
-	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -39,7 +39,7 @@ func (m *Manager) runTimer(ctx context.Context, timer *model.Timer, recordFiring
 		case <-time.After(timer.Interval):
 			timer.Callback()
 			if err := recordFiring(timer.ID, time.Now()); err != nil {
-				// Log error (e.g., log.Printf("Failed to record firing for timer %s: %v", timer.ID, err))
+				log.Printf("failed to record firing for timer %s: %v", timer.ID, err)
 			}
 		case <-ctx.Done():
 			return
@@ -56,7 +56,7 @@ func (m *Manager) runTimer(ctx context.Context, timer *model.Timer, recordFiring
 		case <-ticker.C:
 			timer.Callback()
 			if err := recordFiring(timer.ID, time.Now()); err != nil {
-				_ = fmt.Errorf("firing failed %v", err)
+				log.Printf("failed to record firing for timer %s: %v", timer.ID, err)
 			}
 		case <-ctx.Done():
 			return
