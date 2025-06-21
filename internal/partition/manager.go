@@ -27,21 +27,35 @@ func (m *Manager) StartTimers(ctx context.Context, recordFiring func(timerID str
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	log.Printf("Starting %d timers for partition %s", len(m.Partition.Timers), m.Partition.ID)
+	if len(m.Partition.Timers) == 0 {
+		log.Printf("No timers to start for partition %s", m.Partition.ID)
+		return
+	}
+
 	for _, timer := range m.Partition.Timers {
-		go m.runTimer(ctx, timer, recordFiring)
+		log.Printf("Starting timer %s (partition: %s, interval: %v, once: %v)", timer.ID, timer.Partition, timer.Interval, timer.Once)
+		go m.startTimer(ctx, timer, recordFiring)
 	}
 }
 
-// runTimer executes a single timer's logic.
-func (m *Manager) runTimer(ctx context.Context, timer *model.Timer, recordFiring func(timerID string, t time.Time) error) {
+// startTimer executes a single timer's logic.
+func (m *Manager) startTimer(ctx context.Context, timer *model.Timer, recordFiring func(timerID string, t time.Time) error) {
+	if timer.Interval <= 0 {
+		log.Printf("Invalid interval for timer %s: %v, skipping", timer.ID, timer.Interval)
+		return
+	}
+
 	if timer.Once {
 		select {
 		case <-time.After(timer.Interval):
+			log.Printf("Firing one-time timer %s", timer.ID)
 			timer.Callback()
 			if err := recordFiring(timer.ID, time.Now()); err != nil {
-				log.Printf("failed to record firing for timer %s: %v", timer.ID, err)
+				log.Printf("Failed to record firing for timer %s: %v", timer.ID, err)
 			}
 		case <-ctx.Done():
+			log.Printf("Timer %s cancelled by context", timer.ID)
 			return
 		}
 		return
@@ -54,11 +68,13 @@ func (m *Manager) runTimer(ctx context.Context, timer *model.Timer, recordFiring
 	for {
 		select {
 		case <-ticker.C:
+			log.Printf("Firing recurring timer %s", timer.ID)
 			timer.Callback()
 			if err := recordFiring(timer.ID, time.Now()); err != nil {
-				log.Printf("failed to record firing for timer %s: %v", timer.ID, err)
+				log.Printf("Failed to record firing for timer %s: %v", timer.ID, err)
 			}
 		case <-ctx.Done():
+			log.Printf("Timer %s cancelled by context", timer.ID)
 			return
 		}
 	}

@@ -20,12 +20,12 @@ type Service struct {
 	gossipMgr   *gossip.GossipManager
 	hashRing    *hash.ConsistentHash
 	partitions  map[string]*partition.Manager
-	cancelFuncs map[string]context.CancelFunc // Store cancellation functions for each partition
+	cancelFuncs map[string]context.CancelFunc
 	mu          sync.Mutex
 }
 
 func NewService(cfg *config.Config, pgStore *storage.PostgresStore, redisStore *storage.RedisStore, gossipMgr *gossip.GossipManager) (*Service, error) {
-	hashRing := hash.NewConsistentHash(100) // 100 virtual nodes
+	hashRing := hash.NewConsistentHash(100)
 	return &Service{
 		cfg:         cfg,
 		pgStore:     pgStore,
@@ -39,7 +39,7 @@ func NewService(cfg *config.Config, pgStore *storage.PostgresStore, redisStore *
 
 func (s *Service) Run(ctx context.Context) error {
 	// Join gossip cluster with seed nodes
-	seedNodes := []string{"timer-service.timers.svc.cluster.local:7946"} // Adjust for your cluster
+	seedNodes := []string{"timer-service.timers.svc.cluster.local:7946"}
 	if err := s.gossipMgr.Join(seedNodes); err != nil {
 		log.Printf("Failed to join gossip: %v", err)
 	}
@@ -69,18 +69,12 @@ func (s *Service) syncWithCluster(ctx context.Context) {
 	log.Printf("Sync cycle: current nodes = %v", currentNodes)
 
 	// Step 2: Track nodes currently in the hash ring
-	existingNodes := make(map[string]bool)
-	for node := range s.hashRing.Nodes() {
-		existingNodes[node] = true
-	}
-
+	existingNodes := s.hashRing.Nodes()
 	// Step 3: Update the hash ring
-	// Add new nodes
 	for _, node := range currentNodes {
 		s.hashRing.AddNode(node)
-		delete(existingNodes, node) // Remove from existingNodes to track nodes that left
+		delete(existingNodes, node)
 	}
-
 	// Remove nodes that are no longer in the member list
 	for node := range existingNodes {
 		s.hashRing.RemoveNode(node)
@@ -97,6 +91,7 @@ func (s *Service) syncWithCluster(ctx context.Context) {
 	newPartitions := make(map[string]*partition.Manager)
 	for _, p := range partitions {
 		owner := s.hashRing.GetNode(p.ID)
+		log.Printf("Partition %s assigned to node %s", p.ID, owner)
 		if owner == s.cfg.ServiceName {
 			newPartitions[p.ID] = partition.NewManager(p)
 		}
@@ -120,7 +115,7 @@ func (s *Service) syncWithCluster(ctx context.Context) {
 			s.partitions[id] = mgr
 			s.cancelFuncs[id] = cancel
 			go mgr.StartTimers(partitionCtx, s.redisStore.RecordFiring)
-			log.Printf("Started managing partition %s", id)
+			log.Printf("Started managing partition %s with %d timers", id, len(mgr.Partition.Timers))
 		}
 	}
 }

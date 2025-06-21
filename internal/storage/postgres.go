@@ -38,32 +38,45 @@ func (s *PostgresStore) GetPartitions() ([]*model.Partition, error) {
 
 	partitions := make(map[string]*model.Partition)
 	for rows.Next() {
-		var pID, tID, tPartitionID string
+		var pID, tID, tPartitionID sql.NullString
 		var intervalMs int64
 		var once bool
 		if err := rows.Scan(&pID, &tID, &tPartitionID, &intervalMs, &once); err != nil {
 			return nil, err
 		}
-		p, exists := partitions[pID]
-		if !exists {
-			p = &model.Partition{ID: pID}
-			partitions[pID] = p
+		if !pID.Valid {
+			continue
 		}
-		if tID != "" {
-			p.Timers = append(p.Timers, &model.Timer{
-				ID:        tID,
-				Partition: tPartitionID,
+		p, exists := partitions[pID.String]
+		if !exists {
+			p = &model.Partition{ID: pID.String}
+			partitions[pID.String] = p
+		}
+		if tID.Valid {
+			timer := &model.Timer{
+				ID:        tID.String,
+				Partition: tPartitionID.String,
 				Interval:  time.Duration(intervalMs) * time.Millisecond,
 				Once:      once,
 				Callback: func() {
-					log.Printf("I'm a timer %s and I just did fire!", tID)
+					log.Printf("Timer %s fired at %v", tID.String, time.Now())
 				},
-			})
+			}
+			p.Timers = append(p.Timers, timer)
 		}
 	}
 	result := make([]*model.Partition, 0, len(partitions))
 	for _, p := range partitions {
 		result = append(result, p)
 	}
+	log.Printf("Loaded %d partitions with total %d timers", len(result), countTimers(result))
 	return result, nil
+}
+
+func countTimers(partitions []*model.Partition) int {
+	total := 0
+	for _, p := range partitions {
+		total += len(p.Timers)
+	}
+	return total
 }

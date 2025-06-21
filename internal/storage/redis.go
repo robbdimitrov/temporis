@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -25,5 +26,11 @@ func (s *RedisStore) Close() error {
 }
 
 func (s *RedisStore) RecordFiring(timerID string, t time.Time) error {
-	return s.client.Set(context.Background(), "firing:"+timerID, t.UnixNano(), 0).Err()
+	err := s.client.Set(context.Background(), "firing:"+timerID, t.UnixNano(), 0).Err()
+	if err != nil {
+		log.Printf("Failed to record firing for timer %s in Redis: %v", timerID, err)
+		return err
+	}
+	log.Printf("Recorded firing for timer %s in Redis at %v", timerID, t)
+	return nil
 }
