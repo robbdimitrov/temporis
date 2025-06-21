@@ -27,25 +27,27 @@ func (m *Manager) StartTimers(ctx context.Context, recordFiring func(timerID str
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	log.Printf("Starting %d timers for partition %s", len(m.Partition.Timers), m.Partition.ID)
+	log.Printf("StartTimers called for partition %s with %d timers", m.Partition.ID, len(m.Partition.Timers))
 	if len(m.Partition.Timers) == 0 {
 		log.Printf("No timers to start for partition %s", m.Partition.ID)
 		return
 	}
 
-	for _, timer := range m.Partition.Timers {
-		if timer.ID == "" || timer.Interval <= 0 {
-			log.Printf("Invalid timer for partition %s: ID=%s, Interval=%v, skipping", m.Partition.ID, timer.ID, timer.Interval)
+	for i, timer := range m.Partition.Timers {
+		if timer.ID == "" {
+			log.Printf("Invalid timer at index %d for partition %s: empty ID, skipping", i, m.Partition.ID)
 			continue
 		}
-		log.Printf("Starting timer %s (partition: %s, interval: %v, once: %v)", timer.ID, timer.Partition, timer.Interval, timer.Once)
+		if timer.Interval <= 0 {
+			log.Printf("Invalid timer %s for partition %s: interval=%v, skipping", timer.ID, m.Partition.ID, timer.Interval)
+			continue
+		}
 		go m.startTimer(ctx, timer, recordFiring)
 	}
 }
 
 // startTimer executes a single timer's logic.
 func (m *Manager) startTimer(ctx context.Context, timer *model.Timer, recordFiring func(timerID string, t time.Time) error) {
-	log.Printf("Timer %s goroutine started", timer.ID)
 	if timer.Once {
 		select {
 		case <-time.After(timer.Interval):
@@ -65,7 +67,6 @@ func (m *Manager) startTimer(ctx context.Context, timer *model.Timer, recordFiri
 	ticker := time.NewTicker(timer.Interval)
 	defer ticker.Stop()
 
-	log.Printf("Recurring timer %s ticker started with interval %v", timer.ID, timer.Interval)
 	for {
 		select {
 		case t := <-ticker.C:

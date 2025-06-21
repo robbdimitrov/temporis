@@ -37,11 +37,10 @@ timer-service/
 │   ├── storage/               # PostgreSQL and Redis clients
 │   └── service/               # Core service logic
 ├── deployments/
-│   ├── deployment.yaml        # Kubernetes Deployment manifest
-│   ├── service.yaml           # Headless Service for gossip
-│   └── configmap.yaml         # Database connection URLs
+│   ├── postgres.yaml          # Postgres manifests
+│   ├── redis.yaml             # Redis manifests 
+│   └── timer.yaml             # Timer service manifests
 ├── Dockerfile                 # Docker build instructions
-├── schema.sql                 # PostgreSQL schema
 ├── go.mod                     # Go module dependencies
 └── README.md                  # Project documentation
 ```
@@ -122,13 +121,13 @@ INSERT INTO timers (partition_id, name, interval_ms, once) VALUES
 
 ### 5. Build the Docker Image
 ```bash
-docker build -t timer-service:latest .
+docker build -t timer-service:1.0.0 .
 ```
 
 Push to a registry (if deploying to a remote cluster):
 ```bash
-docker tag timer-service:latest <your-registry>/timer-service:latest
-docker push <your-registry>/timer-service:latest
+docker tag timer-service:1.0.0 <your-registry>/timer-service:1.0.0
+docker push <your-registry>/timer-service:1.0.0
 ```
 
 ## Deployment
@@ -139,7 +138,7 @@ go run ./cmd/server
 ```
 
 ### Kubernetes Deployment
-1. Update `deployments/deployment.yaml` with your Docker image (e.g., `<your-registry>/timer-service:latest`).
+1. Update `deployments/deployment.yaml` with your Docker image (e.g., `<your-registry>/timer-service:1.0.0`).
 2. Ensure PostgreSQL and Redis are accessible from the cluster.
 3. Apply manifests:
    ```bash

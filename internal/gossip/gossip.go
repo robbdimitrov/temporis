@@ -14,13 +14,14 @@ type GossipManager struct {
 
 func NewGossipManager(port int64, serviceName string) (*GossipManager, error) {
 	config := memberlist.DefaultLANConfig()
-	config.Name = fmt.Sprintf("%s-%d", serviceName, port)
+	config.Name = serviceName
 	config.BindPort = int(port)
 	config.LogOutput = log.Writer() // Enable verbose logging for debugging
 	list, err := memberlist.Create(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create memberlist: %v", err)
 	}
+	log.Printf("Gossip manager initialized with node name: %s", config.Name)
 	return &GossipManager{list: list}, nil
 }
 
