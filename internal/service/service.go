@@ -61,6 +61,8 @@ func (s *Service) syncWithCluster(ctx context.Context) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	log.Print("Syncing with cluster...")
+
 	// Step 1: Get the current list of active nodes from the gossip protocol
 	currentNodes := s.gossipMgr.Members()
 

@@ -3,18 +3,19 @@ kind: Deployment
 metadata:
   name: timer-service
 spec:
-  replicas: 2
+  replicas: 3
   selector:
     matchLabels:
       app: timer-service
   template:
     metadata:
       labels:
-      app: timer-service
+        app: timer-service
     spec:
       containers:
       - name: timer-service
-        image: timer-service:latest
+        image: timer-service:1.0
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 7946
           name: gossip

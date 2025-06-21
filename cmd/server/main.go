@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
 	"timer-service/internal/config"
 	"timer-service/internal/gossip"
 	"timer-service/internal/service"
@@ -45,6 +46,7 @@ func main() {
 	}
 
 	go func() {
+		log.Println("Starting service...")
 		if err := svc.Run(ctx); err != nil {
 			log.Printf("Service error: %v", err)
 		}

@@ -3,5 +3,5 @@ kind: ConfigMap
 metadata:
   name: timer-config
 data:
-  postgres-url: "postgres://user:pass@postgres:5432/timers?sslmode=disable"
+  postgres-url: "postgres://postgres:password@postgres:5432/timers?sslmode=disable"
   redis-url: "redis://redis:6379"
