@@ -3,16 +3,52 @@
 A distributed microservice written in Go, designed to manage timers across partitions with no overlap, deployable on Kubernetes. The service uses consistent hashing for partition distribution, a gossip protocol for service discovery, PostgreSQL for configuration storage, and Redis for logging timer firings.
 
 ## Features
-- **Distributed Partition Management**: Each service instance manages a subset of partitions, ensuring no overlap using consistent hashing.
-- **Timer Execution**: Supports one-time and recurring timers per partition, with configurable intervals.
-- **Dynamic Service Discovery**: Uses a gossip protocol (via HashiCorp’s `memberlist`) to discover and monitor service instances (pods).
-- **Data Storage**:
-  - **PostgreSQL**: Stores partition and timer configurations.
-  - **Redis**: Records timer firing events with timestamps.
-- **Kubernetes Deployment**: Scalable deployment with Kubernetes manifests for pods, services, and configuration.
-- **Resilience**: Handles node failures and reassigns partitions dynamically using gossip and consistent hashing.
+
+*   **Distributed Coordination:** Uses HashiCorp's `memberlist` for cluster membership and gossip protocol.
+*   **Consistent Hashing:** Dynamically distributes partitions across active nodes.
+*   **Real-time Synchronization:** Leverages PostgreSQL `LISTEN/NOTIFY` for instant state syncing without polling bottlenecks.
+*   **Persistent Configuration:** Stores partitions and timer definitions securely in PostgreSQL.
+*   **Execution Tracking:** Logs timer firings to Redis to prevent double execution of one-time timers.
 
 ## Architecture
+
+```mermaid
+graph TD
+    subgraph Kubernetes Cluster
+        subgraph Temporis Service
+            T1[Temporis Pod 1<br>Go]
+            T2[Temporis Pod 2<br>Go]
+            T3[Temporis Pod 3<br>Go]
+        end
+
+        DB[(PostgreSQL<br>StatefulSet)]
+        Cache[(Redis<br>StatefulSet)]
+        
+        %% Gossip Protocol
+        T1 <-.->|Gossip Protocol<br>memberlist| T2
+        T2 <-.->|Gossip Protocol<br>memberlist| T3
+        T3 <-.->|Gossip Protocol<br>memberlist| T1
+
+        %% Database Connections
+        T1 -->|LISTEN/NOTIFY &<br>Fetch Partitions| DB
+        T2 -->|LISTEN/NOTIFY &<br>Fetch Partitions| DB
+        T3 -->|LISTEN/NOTIFY &<br>Fetch Partitions| DB
+
+        %% Redis Connections
+        T1 -->|Log Firings &<br>Check state| Cache
+        T2 -->|Log Firings &<br>Check state| Cache
+        T3 -->|Log Firings &<br>Check state| Cache
+    end
+
+    classDef pod fill:#326ce5,stroke:#fff,stroke-width:2px,color:#fff;
+    classDef db fill:#336791,stroke:#fff,stroke-width:2px,color:#fff;
+    classDef cache fill:#dc382d,stroke:#fff,stroke-width:2px,color:#fff;
+
+    class T1,T2,T3 pod;
+    class DB db;
+    class Cache cache;
+```
+
 The service is built as a Go microservice with the following components:
 - **Gossip Protocol**: Manages cluster membership, detecting node joins/leaves using `memberlist`.
 - **Consistent Hashing**: Distributes partitions across nodes to ensure balanced and non-overlapping ownership.
