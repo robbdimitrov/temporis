@@ -26,13 +26,13 @@ spec:
               fieldPath: metadata.name
         - name: POSTGRES_URL
           valueFrom:
-            configMapKeyRef:
-              name: timer-config
+            secretKeyRef:
+              name: timer-secret
               key: postgres-url
         - name: REDIS_URL
           valueFrom:
-            configMapKeyRef:
-              name: timer-config
+            secretKeyRef:
+              name: timer-secret
               key: redis-url
         - name: SEED_NODE
           value: temporis.timers.svc.cluster.local:7946
@@ -51,9 +51,10 @@ spec:
   clusterIP: None
 ---
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: timer-config
-data:
-  postgres-url: "postgres://postgres:password@postgres:5432/timers?sslmode=disable"
-  redis-url: "redis://redis:6379"
+  name: timer-secret
+type: Opaque
+stringData:
+  postgres-url: "postgres://postgres:securepassword123@postgres:5432/timers?sslmode=disable"
+  redis-url: "redis://:secureredis123@redis:6379"

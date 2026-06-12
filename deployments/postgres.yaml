@@ -1,8 +1,9 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: postgres
 spec:
+  serviceName: "postgres"
   replicas: 1
   selector:
     matchLabels:
@@ -19,15 +20,19 @@ spec:
         ports:
         - containerPort: 5432
         envFrom:
-        - configMapRef:
+        - secretRef:
             name: postgres-secret
         volumeMounts:
-        - mountPath: /var/lib/postgresql/data
+        - mountPath: /var/lib/postgresql
           name: postgres-data
-      volumes:
-      - name: postgres-data
-        persistentVolumeClaim:
-          claimName: postgres-volume-claim
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 10Gi
 ---
 apiVersion: v1
 kind: Service
@@ -41,42 +46,13 @@ spec:
     app: postgres
 ---
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
   name: postgres-secret
   labels:
     app: postgres
-data:
+type: Opaque
+stringData:
   POSTGRES_DB: timers
   POSTGRES_USER: postgres
-  POSTGRES_PASSWORD: password
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: postgres-volume-claim
-  labels:
-    app: postgres
-spec:
-  storageClassName: manual
-  accessModes:
-    - ReadWriteMany
-  resources:
-    requests:
-      storage: 10Gi
----
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: postgres-volume
-  labels:
-    type: local
-    app: postgres
-spec:
-  storageClassName: manual
-  capacity:
-    storage: 10Gi
-  accessModes:
-    - ReadWriteMany
-  hostPath:
-    path: "/data/postgresql"
+  POSTGRES_PASSWORD: securepassword123
