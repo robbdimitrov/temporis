@@ -74,7 +74,7 @@ temporis/
 │   ├── partition/             # Partition and timer execution logic
 │   ├── storage/               # PostgreSQL and Redis clients
 │   └── service/               # Core service logic
-├── deployments/
+├── deploy/
 │   ├── postgres.yaml          # Postgres StatefulSet manifest
 │   ├── redis.yaml             # Redis StatefulSet manifest 
 │   └── temporis.yaml          # Timer service Deployment manifest
@@ -84,31 +84,16 @@ temporis/
 ```
 
 ## Prerequisites
-- Go 1.26 or later
+- Go
 - Docker
-- Kubernetes cluster (e.g., Minikube, EKS, GKE)
-- PostgreSQL (accessible from the cluster)
-- Redis (accessible from the cluster)
-
-## Dependencies
-Defined in `go.mod`:
-```go
-module github.com/yourname/temporis
-
-go 1.26.0
-
-require (
-    github.com/go-redis/redis/v9 v9.0.0
-    github.com/jackc/pgx/v5 v5.10.0
-    github.com/hashicorp/memberlist v0.5.0
-    github.com/spaolacci/murmur3 v1.1.0
-)
-```
+- Kubernetes
+- PostgreSQL
+- Redis
 
 ## Setup
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/yourname/temporis.git
+git clone https://github.com/robbdimitrov/temporis.git
 cd temporis
 ```
 
@@ -126,7 +111,7 @@ POSTGRES_URL=postgres://user:pass@localhost:5432/timers?sslmode=disable
 REDIS_URL=redis://localhost:6379
 ```
 
-For Kubernetes, these are set securely via `deployments/temporis.yaml` using a Kubernetes `Secret`, and `fieldRef` for `SERVICE_NAME`.
+For Kubernetes, these are set securely via `deploy/temporis.yaml` using a Kubernetes `Secret`, and `fieldRef` for `SERVICE_NAME`.
 
 ### 4. Initialize PostgreSQL
 Apply the schema to your PostgreSQL database:
@@ -181,11 +166,11 @@ go run ./cmd/server
 ```
 
 ### Kubernetes Deployment
-1. Update `deployments/temporis.yaml` with your Docker image (e.g., `<your-registry>/temporis:1.0.0`).
+1. Update `deploy/temporis.yaml` with your Docker image (e.g., `<your-registry>/temporis:1.0.0`).
 2. Ensure PostgreSQL and Redis are accessible from the cluster.
 3. Apply manifests:
    ```bash
-   kubectl apply -f deployments/
+   kubectl apply -f deploy/
    ```
 4. Scale the deployment for multiple instances:
    ```bash
