@@ -1,4 +1,4 @@
-# Timer Service
+# Temporis
 
 A distributed microservice written in Go, designed to manage timers across partitions with no overlap, deployable on Kubernetes. The service uses consistent hashing for partition distribution, a gossip protocol for service discovery, PostgreSQL for configuration storage, and Redis for logging timer firings.
 
@@ -24,7 +24,7 @@ The service is built as a Go microservice with the following components:
 
 ### Directory Structure
 ```
-timer-service/
+temporis/
 ├── cmd/
 │   └── server/
 │       └── main.go            # Entry point for the service
@@ -41,7 +41,7 @@ timer-service/
 ├── deployments/
 │   ├── postgres.yaml          # Postgres manifests
 │   ├── redis.yaml             # Redis manifests 
-│   └── timer.yaml             # Timer service manifests
+│   └── temporis.yaml             # Timer service manifests
 ├── Dockerfile                 # Docker build instructions
 ├── go.mod                     # Go module dependencies
 └── README.md                  # Project documentation
@@ -57,7 +57,7 @@ timer-service/
 ## Dependencies
 Defined in `go.mod`:
 ```go
-module github.com/yourname/timer-service
+module github.com/yourname/temporis
 
 go 1.21
 
@@ -72,8 +72,8 @@ require (
 ## Setup
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/yourname/timer-service.git
-cd timer-service
+git clone https://github.com/yourname/temporis.git
+cd temporis
 ```
 
 ### 2. Install Dependencies
@@ -84,7 +84,7 @@ go mod tidy
 ### 3. Configure Environment
 Create a `.env` file or set environment variables for local development:
 ```bash
-SERVICE_NAME=timer-service-$(hostname)
+SERVICE_NAME=temporis-$(hostname)
 GOSSIP_PORT=7946
 POSTGRES_URL=postgres://user:pass@localhost:5432/timers?sslmode=disable
 REDIS_URL=redis://localhost:6379
@@ -123,13 +123,13 @@ INSERT INTO timers (partition_id, name, interval_ms, once) VALUES
 
 ### 5. Build the Docker Image
 ```bash
-docker build -t timer-service:1.0.0 .
+docker build -t temporis:1.0.0 .
 ```
 
 Push to a registry (if deploying to a remote cluster):
 ```bash
-docker tag timer-service:1.0.0 <your-registry>/timer-service:1.0.0
-docker push <your-registry>/timer-service:1.0.0
+docker tag temporis:1.0.0 <your-registry>/temporis:1.0.0
+docker push <your-registry>/temporis:1.0.0
 ```
 
 ## Deployment
@@ -140,7 +140,7 @@ go run ./cmd/server
 ```
 
 ### Kubernetes Deployment
-1. Update `deployments/deployment.yaml` with your Docker image (e.g., `<your-registry>/timer-service:1.0.0`).
+1. Update `deployments/deployment.yaml` with your Docker image (e.g., `<your-registry>/temporis:1.0.0`).
 2. Ensure PostgreSQL and Redis are accessible from the cluster.
 3. Apply manifests:
    ```bash
@@ -148,17 +148,17 @@ go run ./cmd/server
    ```
 4. Scale the deployment for multiple instances:
    ```bash
-   kubectl scale deployment timer-service --replicas=3
+   kubectl scale deployment temporis --replicas=3
    ```
 
 ### Verify Deployment
 - Check pod status:
   ```bash
-  kubectl get pods -l app=timer-service
+  kubectl get pods -l app=temporis
   ```
 - View logs to confirm partition assignment and timer firings:
   ```bash
-  kubectl logs -l app=timer-service
+  kubectl logs -l app=temporis
   ```
 - Check Redis for timer firing records:
   ```bash
@@ -193,7 +193,7 @@ The service will detect changes during its next sync cycle (every 5 seconds).
    - Starts periodic synchronization (`syncWithCluster`).
 
 2. **Gossip Protocol**:
-   - Pods discover each other via a headless Kubernetes service (`timer-service`).
+   - Pods discover each other via a headless Kubernetes service (`temporis`).
    - The `memberlist` library maintains an up-to-date list of active pods, detecting failures or scaling events.
 
 3. **Consistent Hashing**:
@@ -224,7 +224,7 @@ The service will detect changes during its next sync cycle (every 5 seconds).
 
 ## Troubleshooting
 - **Pods Not Discovering Each Other**:
-  - Verify the headless service (`kubectl get svc timer-service`).
+  - Verify the headless service (`kubectl get svc temporis`).
   - Check gossip port (7946) is open and not blocked by network policies.
 - **Partitions Not Assigned**:
   - Ensure partitions exist in PostgreSQL.

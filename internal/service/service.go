@@ -6,11 +6,11 @@ import (
 	"sync"
 	"time"
 
-	"timer-service/internal/config"
-	"timer-service/internal/gossip"
-	"timer-service/internal/hash"
-	"timer-service/internal/partition"
-	"timer-service/internal/storage"
+	"temporis/internal/config"
+	"temporis/internal/gossip"
+	"temporis/internal/hash"
+	"temporis/internal/partition"
+	"temporis/internal/storage"
 )
 
 type Service struct {

@@ -7,10 +7,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"timer-service/internal/config"
-	"timer-service/internal/gossip"
-	"timer-service/internal/service"
-	"timer-service/internal/storage"
+	"temporis/internal/config"
+	"temporis/internal/gossip"
+	"temporis/internal/service"
+	"temporis/internal/storage"
 )
 
 func main() {

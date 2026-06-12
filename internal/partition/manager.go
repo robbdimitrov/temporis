@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"timer-service/internal/model"
+	"temporis/internal/model"
 )
 
 // Manager handles the execution of timers within a partition.

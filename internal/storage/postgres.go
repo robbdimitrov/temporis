@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"log"
 	"time"
-	"timer-service/internal/model"
+	"temporis/internal/model"
 
 	_ "github.com/lib/pq"
 )

@@ -1,20 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: timer-service
+  name: temporis
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: timer-service
+      app: temporis
   template:
     metadata:
       labels:
-        app: timer-service
+        app: temporis
     spec:
       containers:
-      - name: timer-service
-        image: timer-service:1.0.0
+      - name: temporis
+        image: temporis:1.0.0
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 7946
@@ -35,15 +35,15 @@ spec:
               name: timer-config
               key: redis-url
         - name: SEED_NODE
-          value: timer-service.timers.svc.cluster.local:7946
+          value: temporis.timers.svc.cluster.local:7946
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: timer-service
+  name: temporis
 spec:
   selector:
-    app: timer-service
+    app: temporis
   ports:
   - name: gossip
     port: 7946
