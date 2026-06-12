@@ -48,7 +48,7 @@ temporis/
 ```
 
 ## Prerequisites
-- Go 1.22 or later
+- Go 1.26 or later
 - Docker
 - Kubernetes cluster (e.g., Minikube, EKS, GKE)
 - PostgreSQL (accessible from the cluster)
@@ -59,7 +59,7 @@ Defined in `go.mod`:
 ```go
 module github.com/yourname/temporis
 
-go 1.21
+go 1.26.0
 
 require (
     github.com/go-redis/redis/v9 v9.0.0

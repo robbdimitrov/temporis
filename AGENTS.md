@@ -4,7 +4,7 @@ This file provides context and instructions for AI agents working on the Tempori
 
 ## Project Context
 Temporis is a distributed microservice written in Go designed to manage timers across partitions without overlap.
-- **Languages:** Go 1.25+
+- **Languages:** Go 1.26+
 - **Core Technologies:** PostgreSQL (persistent config), Redis (timer firing logs), HashiCorp memberlist (gossip protocol).
 - **Architecture:** Nodes use consistent hashing on a hash ring to divide partitions so no two nodes execute timers for the same partition.
 
