@@ -61,25 +61,28 @@ The service is built as a Go microservice with the following components:
 ### Directory Structure
 ```
 temporis/
-├── cmd/
-│   └── server/
-│       └── main.go            # Entry point for the service
-├── database/
-│   ├── script.sql             # Postgres schema and trigger init script
-├── internal/
-│   ├── config/                # Configuration loading
-│   ├── gossip/                # Gossip protocol implementation
-│   ├── hash/                  # Consistent hashing implementation
-│   ├── model/                 # Data models (Partition, Timer)
-│   ├── partition/             # Partition and timer execution logic
-│   ├── storage/               # PostgreSQL and Redis clients
-│   └── service/               # Core service logic
+├── pkg/
+│   └── database/
+│       └── script.sql         # Postgres schema and trigger init script
+├── src/
+│   ├── cmd/
+│   │   └── server/
+│   │       └── main.go        # Entry point for the service
+│   └── internal/
+│       ├── config/            # Configuration loading
+│       ├── gossip/            # Gossip protocol implementation
+│       ├── hash/              # Consistent hashing implementation
+│       ├── model/             # Data models (Partition, Timer)
+│       ├── partition/         # Partition and timer execution logic
+│       ├── storage/           # PostgreSQL and Redis clients
+│       └── service/           # Core service logic
+│   ├── Dockerfile             # Docker build instructions
+│   ├── go.mod                 # Go module dependencies
+│   └── go.sum                 # Go module checksums
 ├── deploy/
 │   ├── postgres.yaml          # Postgres StatefulSet manifest
 │   ├── redis.yaml             # Redis StatefulSet manifest 
 │   └── temporis.yaml          # Timer service Deployment manifest
-├── Dockerfile                 # Docker build instructions
-├── go.mod                     # Go module dependencies
 └── README.md                  # Project documentation
 ```
 
@@ -99,7 +102,9 @@ cd temporis
 
 ### 2. Install Dependencies
 ```bash
+cd src
 go mod tidy
+cd ..
 ```
 
 ### 3. Configure Environment
@@ -116,10 +121,10 @@ For Kubernetes, these are set securely via `deploy/temporis.yaml` using a Kubern
 ### 4. Initialize PostgreSQL
 Apply the schema to your PostgreSQL database:
 ```sql
-psql -h <postgres-host> -U <user> -d timers < ./database/script.sql
+psql -h <postgres-host> -U <user> -d timers < ./pkg/database/script.sql
 ```
 
-Schema (`./database/script.sql`):
+Schema (`./pkg/database/script.sql`):
 ```sql
 CREATE TABLE partitions (
     id VARCHAR(255) PRIMARY KEY
@@ -149,7 +154,9 @@ INSERT INTO timers (partition_id, name, interval_ms, once) VALUES
 
 ### 5. Build the Docker Image
 ```bash
+cd src
 docker build -t temporis:1.0.0 .
+cd ..
 ```
 
 Push to a registry (if deploying to a remote cluster):
@@ -162,6 +169,7 @@ docker push <your-registry>/temporis:1.0.0
 ### Local Development
 Run the service locally:
 ```bash
+cd src
 go run ./cmd/server
 ```
 
