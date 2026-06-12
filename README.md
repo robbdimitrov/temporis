@@ -14,15 +14,17 @@ A distributed microservice written in Go, designed to manage timers across parti
 
 ```mermaid
 graph TD
-    subgraph Kubernetes Cluster
-        subgraph Temporis Service
-            T1[Temporis Pod 1<br>Go]
-            T2[Temporis Pod 2<br>Go]
-            T3[Temporis Pod 3<br>Go]
+    subgraph kubernetes_cluster ["Kubernetes Cluster"]
+        subgraph temporis_service ["Temporis Service"]
+            T1["Temporis Pod 1<br>(Go)"]:::pod
+            T2["Temporis Pod 2<br>(Go)"]:::pod
+            T3["Temporis Pod 3<br>(Go)"]:::pod
         end
 
-        DB[(PostgreSQL<br>StatefulSet)]
-        Cache[(Valkey<br>StatefulSet)]
+        subgraph data_storage ["Data & Storage"]
+            DB[("PostgreSQL<br>(StatefulSet)")]:::db
+            Cache[("Valkey<br>(StatefulSet)")]:::cache
+        end
         
         %% Gossip Protocol
         T1 <-.->|Gossip Protocol<br>memberlist| T2
@@ -40,13 +42,13 @@ graph TD
         T3 -->|Log Firings &<br>Check state| Cache
     end
 
-    classDef pod fill:#326ce5,stroke:#fff,stroke-width:2px,color:#fff;
-    classDef db fill:#336791,stroke:#fff,stroke-width:2px,color:#fff;
-    classDef cache fill:#dc382d,stroke:#fff,stroke-width:2px,color:#fff;
+    classDef pod fill:#10b981,stroke:#059669,stroke-width:2px,color:#fff
+    classDef db fill:#3b82f6,stroke:#2563eb,stroke-width:2px,color:#fff
+    classDef cache fill:#ef4444,stroke:#dc2626,stroke-width:2px,color:#fff
 
-    class T1,T2,T3 pod;
-    class DB db;
-    class Cache cache;
+    style kubernetes_cluster fill:transparent,stroke:transparent
+    style temporis_service fill:transparent,stroke:transparent
+    style data_storage fill:transparent,stroke:transparent
 ```
 
 The service is built as a Go microservice with the following components:

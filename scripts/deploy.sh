@@ -4,7 +4,7 @@ set -e
 echo "Deploying Temporis..."
 
 echo "1. Building Docker image..."
-cd src && docker build -t temporis:1.0.0 . && cd ..
+cd src && docker build -t temporis:1.0.1 . && cd ..
 
 echo "2. Generating Postgres Init ConfigMap..."
 kubectl create configmap postgres-init-script --from-file=pkg/database/script.sql -o yaml --dry-run=client | kubectl apply -f -
