@@ -58,130 +58,26 @@ The service is built as a Go microservice with the following components:
   - **Redis**: Logs timer firings for auditing or downstream processing.
 - **Service Logic**: Orchestrates partition distribution, timer execution, and cluster synchronization.
 
-### Directory Structure
-```
-temporis/
-├── pkg/
-│   └── database/
-│       └── script.sql         # Postgres schema and trigger init script
-├── src/
-│   ├── cmd/
-│   │   └── server/
-│   │       └── main.go        # Entry point for the service
-│   └── internal/
-│       ├── config/            # Configuration loading
-│       ├── gossip/            # Gossip protocol implementation
-│       ├── hash/              # Consistent hashing implementation
-│       ├── model/             # Data models (Partition, Timer)
-│       ├── partition/         # Partition and timer execution logic
-│       ├── storage/           # PostgreSQL and Redis clients
-│       └── service/           # Core service logic
-│   ├── Dockerfile             # Docker build instructions
-│   ├── go.mod                 # Go module dependencies
-│   └── go.sum                 # Go module checksums
-├── deploy/
-│   ├── postgres.yaml          # Postgres StatefulSet manifest
-│   ├── redis.yaml             # Redis StatefulSet manifest 
-│   └── temporis.yaml          # Timer service Deployment manifest
-├── scripts/
-│   └── deploy.sh              # Deployment script for Docker and Kubernetes
-├── Makefile                   # Make targets for build, test, docker, etc.
-└── README.md                  # Project documentation
-```
+## Setup & Deployment
 
-## Prerequisites
-- Go
-- Docker
-- Kubernetes
-- PostgreSQL
-- Redis
-
-## Setup
-### 1. Clone the Repository
-```bash
-git clone https://github.com/robbdimitrov/temporis.git
-cd temporis
-```
-
-### 2. Install Dependencies
-```bash
-make tidy
-```
-
-### 3. Configure Environment
-Create a `.env` file or set environment variables for local development:
-```bash
-SERVICE_NAME=temporis-$(hostname)
-GOSSIP_PORT=7946
-POSTGRES_URL=postgres://user:pass@localhost:5432/timers?sslmode=disable
-REDIS_URL=redis://localhost:6379
-```
-
-For Kubernetes, these are set securely via `deploy/temporis.yaml` using a Kubernetes `Secret`, and `fieldRef` for `SERVICE_NAME`.
-
-### 4. Initialize PostgreSQL
-Apply the schema to your PostgreSQL database:
-```sql
-psql -h <postgres-host> -U <user> -d timers < ./pkg/database/script.sql
-```
-
-Schema (`./pkg/database/script.sql`):
-```sql
-CREATE TABLE partitions (
-    id VARCHAR(255) PRIMARY KEY
-);
-
-CREATE TABLE timers (
-    id SERIAL PRIMARY KEY,
-    partition_id VARCHAR(255) REFERENCES partitions(id),
-    name VARCHAR(100),
-    interval_ms BIGINT NOT NULL,
-    once BOOLEAN NOT NULL
-);
-
--- Uses PostgreSQL triggers for instant synchronization
-CREATE TRIGGER timers_changed_trigger
-AFTER INSERT OR UPDATE OR DELETE ON timers
-FOR EACH STATEMENT EXECUTE FUNCTION notify_timers_change();
-```
-
-Insert sample data:
-```sql
-INSERT INTO partitions (id) VALUES ('part1'), ('part2');
-INSERT INTO timers (partition_id, name, interval_ms, once) VALUES
-    ('part1', 'timer1', 1000, false),  -- Recurring every 1s
-    ('part2', 'timer2', 5000, true);   -- One-time after 5s
-```
-
-### 5. Build the Docker Image
-```bash
-make docker
-```
-
-Push to a registry (if deploying to a remote cluster):
-```bash
-docker tag temporis:1.0.0 <your-registry>/temporis:1.0.0
-docker push <your-registry>/temporis:1.0.0
-```
-
-## Deployment
-### Local Development
-Run the service locally:
-```bash
-make run
-```
-
-### Kubernetes Deployment
-1. Update `deploy/temporis.yaml` with your Docker image (e.g., `<your-registry>/temporis:1.0.0`).
-2. Ensure PostgreSQL and Redis are accessible from the cluster.
-3. Apply manifests:
+1. **Clone the Repository**
    ```bash
-   kubectl apply -f deploy/
+   git clone https://github.com/robbdimitrov/temporis.git
+   cd temporis
    ```
-4. Scale the deployment for multiple instances:
+
+2. **Deploy the Cluster**
    ```bash
-   kubectl scale deployment temporis --replicas=3
+   ./scripts/deploy.sh
    ```
+
+### How the Database is Initialized
+During deployment, `scripts/deploy.sh` automatically packages `pkg/database/script.sql` into a Kubernetes `ConfigMap`. The PostgreSQL `StatefulSet` mounts this map directly into `/docker-entrypoint-initdb.d/`. When the database pod starts for the very first time, it automatically executes this script to:
+1. Create the `partitions` and `timers` tables.
+2. Set up the `LISTEN/NOTIFY` triggers.
+3. Seed the database with sample partitions (`part1`, `part2`) and initial timers.
+
+You do not need to initialize the database manually.
 
 ### Verify Deployment
 - Check pod status:
