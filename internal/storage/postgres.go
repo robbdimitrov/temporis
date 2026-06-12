@@ -92,31 +92,41 @@ func countTimers(partitions []*model.Partition) int {
 }
 
 func (s *PostgresStore) ListenForChanges(ctx context.Context, onNotify func()) {
-	conn, err := s.pool.Acquire(ctx)
-	if err != nil {
-		log.Printf("Failed to acquire connection for listen: %v", err)
-		return
-	}
-	defer conn.Release()
-
-	_, err = conn.Exec(ctx, "LISTEN timers_changed")
-	if err != nil {
-		log.Printf("Failed to execute LISTEN: %v", err)
-		return
-	}
-
-	log.Println("Listening for timers_changed notifications...")
 	for {
-		_, err := conn.Conn().WaitForNotification(ctx)
+		if ctx.Err() != nil {
+			return
+		}
+
+		conn, err := s.pool.Acquire(ctx)
 		if err != nil {
-			if ctx.Err() != nil {
-				return
-			}
-			log.Printf("Error waiting for notification: %v", err)
-			time.Sleep(1 * time.Second)
+			log.Printf("Failed to acquire connection for listen: %v", err)
+			time.Sleep(2 * time.Second)
 			continue
 		}
-		log.Println("Received NOTIFY: timers_changed")
-		onNotify()
+
+		_, err = conn.Exec(ctx, "LISTEN timers_changed")
+		if err != nil {
+			log.Printf("Failed to execute LISTEN: %v", err)
+			conn.Release()
+			time.Sleep(2 * time.Second)
+			continue
+		}
+
+		log.Println("Listening for timers_changed notifications...")
+		for {
+			_, err := conn.Conn().WaitForNotification(ctx)
+			if err != nil {
+				if ctx.Err() != nil {
+					conn.Release()
+					return
+				}
+				log.Printf("Error waiting for notification: %v", err)
+				break // Break inner loop to reconnect
+			}
+			log.Println("Received NOTIFY: timers_changed")
+			onNotify()
+		}
+		conn.Release()
+		time.Sleep(1 * time.Second) // Backoff before reconnect
 	}
 }

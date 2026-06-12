@@ -56,8 +56,11 @@ func (m *Manager) startTimer(ctx context.Context, timer *model.Timer, recordFiri
 			log.Printf("One-time timer %s has already fired, skipping", timer.ID)
 			return
 		}
+		timerObj := time.NewTimer(timer.Interval)
+		defer timerObj.Stop()
+
 		select {
-		case <-time.After(timer.Interval):
+		case <-timerObj.C:
 			log.Printf("Firing one-time timer %s at %v", timer.ID, time.Now())
 			timer.Callback()
 			recordFiring(timer.ID, time.Now())

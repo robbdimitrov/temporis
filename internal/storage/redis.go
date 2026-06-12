@@ -49,14 +49,13 @@ func (s *RedisStore) HasFired(timerID string) bool {
 
 func (s *RedisStore) RecordFiring(timerID string, t time.Time) bool {
 	ctx := context.Background()
-	pipe := s.client.Pipeline()
-	// Add timestamp to firings list
-	pipe.LPush(ctx, "firings:"+timerID, t.UnixNano())
-	// Keep only the last 10 entries
-	pipe.LTrim(ctx, "firings:"+timerID, 0, 9)
-	// Set fired flag for one-time timers
-
 	for i := 0; i < 3; i++ {
+		pipe := s.client.Pipeline()
+		// Add timestamp to firings list
+		pipe.LPush(ctx, "firings:"+timerID, t.UnixNano())
+		// Keep only the last 10 entries
+		pipe.LTrim(ctx, "firings:"+timerID, 0, 9)
+		
 		_, err := pipe.Exec(ctx)
 		if err == nil {
 			log.Printf("Recorded firing for timer %s at %v", timerID, t)

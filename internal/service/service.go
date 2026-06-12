@@ -44,14 +44,22 @@ func (s *Service) Run(ctx context.Context) error {
 		log.Printf("Failed to join gossip: %v", err)
 	}
 
-	// Do an initial sync
-	s.syncWithCluster(ctx)
+	syncChan := make(chan struct{}, 1)
+	triggerSync := func() {
+		select {
+		case syncChan <- struct{}{}:
+		default:
+		}
+	}
 
 	// Listen for Postgres notifications
 	go s.pgStore.ListenForChanges(ctx, func() {
 		log.Println("Database changed, executing instant sync...")
-		s.syncWithCluster(ctx)
+		triggerSync()
 	})
+
+	// Initial sync
+	triggerSync()
 
 	// Periodic fallback sync (low frequency)
 	ticker := time.NewTicker(30 * time.Second)
@@ -62,6 +70,8 @@ func (s *Service) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
+			triggerSync()
+		case <-syncChan:
 			s.syncWithCluster(ctx)
 		}
 	}
