@@ -9,7 +9,7 @@ func TestLoad(t *testing.T) {
 	// Setup test environment variables
 	os.Setenv("SERVICE_NAME", "test-service")
 	os.Setenv("GOSSIP_PORT", "1234")
-	os.Setenv("REDIS_URL", "redis://test:6379")
+	os.Setenv("VALKEY_URL", "redis://test:6379")
 	defer os.Clearenv()
 
 	cfg, err := Load()
@@ -23,8 +23,8 @@ func TestLoad(t *testing.T) {
 	if cfg.GossipPort != 1234 {
 		t.Errorf("expected 1234, got %v", cfg.GossipPort)
 	}
-	if cfg.RedisURL != "redis://test:6379" {
-		t.Errorf("expected redis://test:6379, got %v", cfg.RedisURL)
+	if cfg.ValkeyURL != "redis://test:6379" {
+		t.Errorf("expected redis://test:6379, got %v", cfg.ValkeyURL)
 	}
 	// Fallback test
 	if cfg.PostgresURL != "postgres://postgres:password@localhost:5432/timers?sslmode=disable" {

@@ -9,11 +9,11 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-type RedisStore struct {
+type ValkeyStore struct {
 	client *redis.Client
 }
 
-func NewRedisStore(url string) (*RedisStore, error) {
+func NewValkeyStore(url string) (*ValkeyStore, error) {
 	opts, err := redis.ParseURL(url)
 	if err != nil {
 		return nil, err
@@ -22,18 +22,18 @@ func NewRedisStore(url string) (*RedisStore, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := client.Ping(ctx).Err(); err != nil {
-		log.Printf("Failed to ping Redis: %v", err)
+		log.Printf("Failed to ping Valkey: %v", err)
 		return nil, err
 	}
-	log.Printf("Connected to Redis at %s", opts.Addr)
-	return &RedisStore{client}, nil
+	log.Printf("Connected to Valkey at %s", opts.Addr)
+	return &ValkeyStore{client}, nil
 }
 
-func (s *RedisStore) Close() error {
+func (s *ValkeyStore) Close() error {
 	return s.client.Close()
 }
 
-func (s *RedisStore) HasFired(timerID string) bool {
+func (s *ValkeyStore) HasFired(timerID string) bool {
 	ctx := context.Background()
 	for i := 0; i < 3; i++ {
 		exists, err := s.client.Exists(ctx, "firings:"+timerID).Result()
@@ -47,7 +47,7 @@ func (s *RedisStore) HasFired(timerID string) bool {
 	return false
 }
 
-func (s *RedisStore) RecordFiring(timerID string, t time.Time) bool {
+func (s *ValkeyStore) RecordFiring(timerID string, t time.Time) bool {
 	ctx := context.Background()
 	for i := 0; i < 3; i++ {
 		pipe := s.client.Pipeline()
@@ -68,7 +68,7 @@ func (s *RedisStore) RecordFiring(timerID string, t time.Time) bool {
 	return false
 }
 
-func (s *RedisStore) GetLastFirings(timerID string) ([]time.Time, error) {
+func (s *ValkeyStore) GetLastFirings(timerID string) ([]time.Time, error) {
 	ctx := context.Background()
 	timestamps, err := s.client.LRange(ctx, "firings:"+timerID, 0, 9).Result()
 	if err != nil {

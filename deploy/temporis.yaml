@@ -29,11 +29,11 @@ spec:
             secretKeyRef:
               name: timer-secret
               key: postgres-url
-        - name: REDIS_URL
+        - name: VALKEY_URL
           valueFrom:
             secretKeyRef:
               name: timer-secret
-              key: redis-url
+              key: valkey-url
         - name: SEED_NODE
           value: temporis.timers.svc.cluster.local:7946
 ---
@@ -57,4 +57,4 @@ metadata:
 type: Opaque
 stringData:
   postgres-url: "postgres://postgres:securepassword123@postgres:5432/timers?sslmode=disable"
-  redis-url: "redis://:secureredis123@redis:6379"
+  valkey-url: "redis://:securevalkey123@valkey:6379"

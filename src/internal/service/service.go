@@ -16,7 +16,7 @@ import (
 type Service struct {
 	cfg         *config.Config
 	pgStore     *storage.PostgresStore
-	redisStore  *storage.RedisStore
+	valkeyStore *storage.ValkeyStore
 	gossipMgr   *gossip.GossipManager
 	hashRing    *hash.ConsistentHash
 	partitions  map[string]*partition.Manager
@@ -24,12 +24,12 @@ type Service struct {
 	mu          sync.Mutex
 }
 
-func NewService(cfg *config.Config, pgStore *storage.PostgresStore, redisStore *storage.RedisStore, gossipMgr *gossip.GossipManager) (*Service, error) {
+func NewService(cfg *config.Config, pgStore *storage.PostgresStore, valkeyStore *storage.ValkeyStore, gossipMgr *gossip.GossipManager) (*Service, error) {
 	hashRing := hash.NewConsistentHash(100)
 	return &Service{
 		cfg:         cfg,
 		pgStore:     pgStore,
-		redisStore:  redisStore,
+		valkeyStore: valkeyStore,
 		gossipMgr:   gossipMgr,
 		hashRing:    hashRing,
 		partitions:  make(map[string]*partition.Manager),
@@ -112,7 +112,7 @@ func (s *Service) syncWithCluster(ctx context.Context) {
 		log.Printf("Partition %s assigned to node %s (%d timers)", p.ID, owner, len(p.Timers))
 		if owner == s.cfg.ServiceName {
 			log.Printf("This pod (%s) owns partition %s", s.cfg.ServiceName, p.ID)
-			newPartitions[p.ID] = partition.NewManager(p, s.redisStore.HasFired)
+			newPartitions[p.ID] = partition.NewManager(p, s.valkeyStore.HasFired)
 		}
 	}
 
@@ -135,7 +135,7 @@ func (s *Service) syncWithCluster(ctx context.Context) {
 			s.partitions[id] = mgr
 			s.cancelFuncs[id] = cancel
 			log.Printf("Launching StartTimers for partition %s with %d timers", id, len(mgr.Partition.Timers))
-			go mgr.StartTimers(partitionCtx, s.redisStore.RecordFiring)
+			go mgr.StartTimers(partitionCtx, s.valkeyStore.RecordFiring)
 		} else {
 			log.Printf("Partition %s already running with %d timers", id, len(mgr.Partition.Timers))
 		}

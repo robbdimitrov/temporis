@@ -28,11 +28,11 @@ func main() {
 	}
 	defer pgStore.Close()
 
-	redisStore, err := storage.NewRedisStore(cfg.RedisURL)
+	valkeyStore, err := storage.NewValkeyStore(cfg.ValkeyURL)
 	if err != nil {
-		log.Fatalf("Failed to init redis: %v", err)
+		log.Fatalf("Failed to init valkey: %v", err)
 	}
-	defer redisStore.Close()
+	defer valkeyStore.Close()
 
 	gossipMgr, err := gossip.NewGossipManager(cfg.GossipPort, cfg.ServiceName)
 	if err != nil {
@@ -40,7 +40,7 @@ func main() {
 	}
 	defer gossipMgr.Shutdown()
 
-	svc, err := service.NewService(cfg, pgStore, redisStore, gossipMgr)
+	svc, err := service.NewService(cfg, pgStore, valkeyStore, gossipMgr)
 	if err != nil {
 		log.Fatalf("Failed to init service: %v", err)
 	}

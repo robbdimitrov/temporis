@@ -1,6 +1,6 @@
 # Temporis
 
-A distributed microservice written in Go, designed to manage timers across partitions with no overlap, deployable on Kubernetes. The service uses consistent hashing for partition distribution, a gossip protocol for service discovery, PostgreSQL for configuration storage, and Redis for logging timer firings.
+A distributed microservice written in Go, designed to manage timers across partitions with no overlap, deployable on Kubernetes. The service uses consistent hashing for partition distribution, a gossip protocol for service discovery, PostgreSQL for configuration storage, and Valkey for logging timer firings.
 
 ## Features
 
@@ -8,7 +8,7 @@ A distributed microservice written in Go, designed to manage timers across parti
 *   **Consistent Hashing:** Dynamically distributes partitions across active nodes.
 *   **Real-time Synchronization:** Leverages PostgreSQL `LISTEN/NOTIFY` for instant state syncing without polling bottlenecks.
 *   **Persistent Configuration:** Stores partitions and timer definitions securely in PostgreSQL.
-*   **Execution Tracking:** Logs timer firings to Redis to prevent double execution of one-time timers.
+*   **Execution Tracking:** Logs timer firings to Valkey to prevent double execution of one-time timers.
 
 ## Architecture
 
@@ -22,7 +22,7 @@ graph TD
         end
 
         DB[(PostgreSQL<br>StatefulSet)]
-        Cache[(Redis<br>StatefulSet)]
+        Cache[(Valkey<br>StatefulSet)]
         
         %% Gossip Protocol
         T1 <-.->|Gossip Protocol<br>memberlist| T2
@@ -34,7 +34,7 @@ graph TD
         T2 -->|LISTEN/NOTIFY &<br>Fetch Partitions| DB
         T3 -->|LISTEN/NOTIFY &<br>Fetch Partitions| DB
 
-        %% Redis Connections
+        %% Valkey Connections
         T1 -->|Log Firings &<br>Check state| Cache
         T2 -->|Log Firings &<br>Check state| Cache
         T3 -->|Log Firings &<br>Check state| Cache
@@ -55,7 +55,7 @@ The service is built as a Go microservice with the following components:
 - **Partition Manager**: Executes timers (one-time or recurring) for owned partitions.
 - **Storage**:
   - **PostgreSQL**: Persists partition and timer configurations.
-  - **Redis**: Logs timer firings for auditing or downstream processing.
+  - **Valkey**: Logs timer firings for auditing or downstream processing.
 - **Service Logic**: Orchestrates partition distribution, timer execution, and cluster synchronization.
 
 ## Setup & Deployment
@@ -88,9 +88,9 @@ You do not need to initialize the database manually.
   ```bash
   kubectl logs -l app=temporis
   ```
-- Check Redis for timer firing records:
+- Check Valkey for timer firing records:
   ```bash
-  redis-cli -h <redis-host> KEYS "firing:*"
+  valkey-cli -h <valkey-host> KEYS "firing:*"
   ```
 
 ## Usage
@@ -99,7 +99,7 @@ The service automatically:
 2. Loads partitions and timers from PostgreSQL.
 3. Assigns partitions using consistent hashing based on the gossip member list.
 4. Executes timers (one-time or recurring) for owned partitions.
-5. Logs timer firings to Redis.
+5. Logs timer firings to Valkey.
 
 ### Adding Partitions and Timers
 Insert new partitions or timers into PostgreSQL:
@@ -112,12 +112,12 @@ The service will instantly detect changes in real-time via PostgreSQL `LISTEN/NO
 
 ### Monitoring
 - **Logs**: Monitor pod logs for node joins/leaves, partition assignments, and errors.
-- **Redis**: Inspect `firing:<timer-id>` keys for timer execution history.
+- **Valkey**: Inspect `firing:<timer-id>` keys for timer execution history.
 
 ## How It Works
 1. **Service Startup**:
    - Loads configuration (e.g., database URLs, gossip port).
-   - Initializes PostgreSQL, Redis, and gossip protocol.
+   - Initializes PostgreSQL, Valkey, and gossip protocol.
    - Starts PostgreSQL listener for real-time `LISTEN/NOTIFY` synchronization.
 
 2. **Gossip Protocol**:
@@ -131,7 +131,7 @@ The service will instantly detect changes in real-time via PostgreSQL `LISTEN/NO
 
 4. **Partition and Timer Management**:
    - Each pod manages its assigned partitions, loaded from PostgreSQL.
-   - Timers (one-time or recurring) are executed via goroutines, with firings logged to Redis.
+   - Timers (one-time or recurring) are executed via goroutines, with firings logged to Valkey.
    - Partitions are reassigned dynamically when the cluster changes.
 
 5. **Node Removal**:
@@ -148,7 +148,7 @@ The service will instantly detect changes in real-time via PostgreSQL `LISTEN/NO
 ### Enhancements
 - **Metrics**: Integrate Prometheus for monitoring node count, partition assignments, and timer firings.
 - **Health Checks**: Add HTTP endpoints for readiness and liveness probes.
-- **Retry Logic**: Implement retries for database connections and Redis writes.
+- **Retry Logic**: Implement retries for database connections and Valkey writes.
 
 ## Troubleshooting
 - **Pods Not Discovering Each Other**:
@@ -158,7 +158,7 @@ The service will instantly detect changes in real-time via PostgreSQL `LISTEN/NO
   - Ensure partitions exist in PostgreSQL.
   - Check logs for hash ring updates and errors.
 - **Timer Firings Missing**:
-  - Verify Redis connectivity and inspect `firing:*` keys.
+  - Verify Valkey connectivity and inspect `firing:*` keys.
   - Confirm timer intervals are reasonable (e.g., not too short).
 
 ## Contributing
