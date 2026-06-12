@@ -65,7 +65,7 @@ temporis/
 │   └── server/
 │       └── main.go            # Entry point for the service
 ├── database/
-│   ├── schema.sql             # Postgres init script
+│   ├── script.sql             # Postgres schema and trigger init script
 ├── internal/
 │   ├── config/                # Configuration loading
 │   ├── gossip/                # Gossip protocol implementation
@@ -75,9 +75,9 @@ temporis/
 │   ├── storage/               # PostgreSQL and Redis clients
 │   └── service/               # Core service logic
 ├── deployments/
-│   ├── postgres.yaml          # Postgres manifests
-│   ├── redis.yaml             # Redis manifests 
-│   └── temporis.yaml             # Timer service manifests
+│   ├── postgres.yaml          # Postgres StatefulSet manifest
+│   ├── redis.yaml             # Redis StatefulSet manifest 
+│   └── temporis.yaml          # Timer service Deployment manifest
 ├── Dockerfile                 # Docker build instructions
 ├── go.mod                     # Go module dependencies
 └── README.md                  # Project documentation
@@ -126,15 +126,15 @@ POSTGRES_URL=postgres://user:pass@localhost:5432/timers?sslmode=disable
 REDIS_URL=redis://localhost:6379
 ```
 
-For Kubernetes, these are set via `deployments/configmap.yaml` and `fieldRef` for `SERVICE_NAME`.
+For Kubernetes, these are set securely via `deployments/temporis.yaml` using a Kubernetes `Secret`, and `fieldRef` for `SERVICE_NAME`.
 
 ### 4. Initialize PostgreSQL
 Apply the schema to your PostgreSQL database:
 ```sql
-psql -h <postgres-host> -U <user> -d timers < ./database/schema.sql
+psql -h <postgres-host> -U <user> -d timers < ./database/script.sql
 ```
 
-Schema (`./database/schema.sql`):
+Schema (`./database/script.sql`):
 ```sql
 CREATE TABLE partitions (
     id VARCHAR(255) PRIMARY KEY
@@ -147,6 +147,11 @@ CREATE TABLE timers (
     interval_ms BIGINT NOT NULL,
     once BOOLEAN NOT NULL
 );
+
+-- Uses PostgreSQL triggers for instant synchronization
+CREATE TRIGGER timers_changed_trigger
+AFTER INSERT OR UPDATE OR DELETE ON timers
+FOR EACH STATEMENT EXECUTE FUNCTION notify_timers_change();
 ```
 
 Insert sample data:
@@ -176,7 +181,7 @@ go run ./cmd/server
 ```
 
 ### Kubernetes Deployment
-1. Update `deployments/deployment.yaml` with your Docker image (e.g., `<your-registry>/temporis:1.0.0`).
+1. Update `deployments/temporis.yaml` with your Docker image (e.g., `<your-registry>/temporis:1.0.0`).
 2. Ensure PostgreSQL and Redis are accessible from the cluster.
 3. Apply manifests:
    ```bash
@@ -216,7 +221,7 @@ INSERT INTO partitions (id) VALUES ('part3');
 INSERT INTO timers (partition_id, name, interval_ms, once) VALUES ('part3', 'timer3', 2000, false);
 ```
 
-The service will detect changes during its next sync cycle (every 5 seconds).
+The service will instantly detect changes in real-time via PostgreSQL `LISTEN/NOTIFY`.
 
 ### Monitoring
 - **Logs**: Monitor pod logs for node joins/leaves, partition assignments, and errors.
@@ -226,7 +231,7 @@ The service will detect changes during its next sync cycle (every 5 seconds).
 1. **Service Startup**:
    - Loads configuration (e.g., database URLs, gossip port).
    - Initializes PostgreSQL, Redis, and gossip protocol.
-   - Starts periodic synchronization (`syncWithCluster`).
+   - Starts PostgreSQL listener for real-time `LISTEN/NOTIFY` synchronization.
 
 2. **Gossip Protocol**:
    - Pods discover each other via a headless Kubernetes service (`temporis`).
