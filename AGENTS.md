@@ -9,16 +9,18 @@ Temporis is a distributed microservice written in Go designed to manage timers a
 - **Architecture:** Nodes use consistent hashing on a hash ring to divide partitions so no two nodes execute timers for the same partition.
 
 ## Development Commands
-- **Build:** `go build ./...`
-- **Tidy/Dependencies:** `go mod tidy`
-- **Run Locally:** `go run ./cmd/server`
-- **Docker Build:** `docker build -t temporis:1.0.0 .`
+- **Build:** `make build`
+- **Tidy/Dependencies:** `make tidy`
+- **Run Locally:** `make run`
+- **Docker Build:** `make docker`
+- **Test:** `make test`
 
 ## Directory Structure
-- `cmd/server/`: Main application entry point.
-- `internal/`: Core application logic (config, gossip, hash, model, partition, service, storage).
-- `deployments/`: Kubernetes manifests (temporis, postgres, redis).
-- `database/`: Database initialization scripts (`script.sql`).
+- `src/`: Go application code (`cmd`, `internal`), `go.mod`, and `Dockerfile`.
+- `deploy/`: Kubernetes manifests (temporis, postgres, redis).
+- `pkg/database/`: Database initialization scripts (`script.sql`).
+- `scripts/`: Auxiliary scripts like `deploy.sh`.
+- `Makefile`: Project tasks and build targets.
 
 ## Coding Guidelines
 - Follow standard Go idioms and effective Go guidelines.

@@ -83,6 +83,9 @@ temporis/
 │   ├── postgres.yaml          # Postgres StatefulSet manifest
 │   ├── redis.yaml             # Redis StatefulSet manifest 
 │   └── temporis.yaml          # Timer service Deployment manifest
+├── scripts/
+│   └── deploy.sh              # Deployment script for Docker and Kubernetes
+├── Makefile                   # Make targets for build, test, docker, etc.
 └── README.md                  # Project documentation
 ```
 
@@ -102,9 +105,7 @@ cd temporis
 
 ### 2. Install Dependencies
 ```bash
-cd src
-go mod tidy
-cd ..
+make tidy
 ```
 
 ### 3. Configure Environment
@@ -154,9 +155,7 @@ INSERT INTO timers (partition_id, name, interval_ms, once) VALUES
 
 ### 5. Build the Docker Image
 ```bash
-cd src
-docker build -t temporis:1.0.0 .
-cd ..
+make docker
 ```
 
 Push to a registry (if deploying to a remote cluster):
@@ -169,8 +168,7 @@ docker push <your-registry>/temporis:1.0.0
 ### Local Development
 Run the service locally:
 ```bash
-cd src
-go run ./cmd/server
+make run
 ```
 
 ### Kubernetes Deployment
