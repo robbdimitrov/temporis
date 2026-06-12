@@ -44,8 +44,17 @@ func (s *Service) Run(ctx context.Context) error {
 		log.Printf("Failed to join gossip: %v", err)
 	}
 
-	// Periodic sync
-	ticker := time.NewTicker(5 * time.Second)
+	// Do an initial sync
+	s.syncWithCluster(ctx)
+
+	// Listen for Postgres notifications
+	go s.pgStore.ListenForChanges(ctx, func() {
+		log.Println("Database changed, executing instant sync...")
+		s.syncWithCluster(ctx)
+	})
+
+	// Periodic fallback sync (low frequency)
+	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
 	for {

@@ -1,33 +1,41 @@
 package storage
 
 import (
-	"database/sql"
+	"context"
 	"log"
 	"time"
+
 	"temporis/internal/model"
 
-	_ "github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type PostgresStore struct {
-	db *sql.DB
+	pool *pgxpool.Pool
 }
 
 func NewPostgresStore(url string) (*PostgresStore, error) {
-	db, err := sql.Open("postgres", url)
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, url)
 	if err != nil {
 		return nil, err
 	}
-	return &PostgresStore{db}, nil
+	// Verify connection
+	if err := pool.Ping(ctx); err != nil {
+		return nil, err
+	}
+	return &PostgresStore{pool: pool}, nil
 }
 
 func (s *PostgresStore) Close() error {
-	return s.db.Close()
+	s.pool.Close()
+	return nil
 }
 
 func (s *PostgresStore) GetPartitions() ([]*model.Partition, error) {
-	rows, err := s.db.Query(`
-		SELECT p.id, t.id, t.partition_id, t.interval_ms, t.once
+	ctx := context.Background()
+	rows, err := s.pool.Query(ctx, `
+		SELECT p.id, t.id::text, t.partition_id, t.interval_ms, t.once
 		FROM partitions p
 		LEFT JOIN timers t ON p.id = t.partition_id
 	`)
@@ -38,28 +46,30 @@ func (s *PostgresStore) GetPartitions() ([]*model.Partition, error) {
 
 	partitions := make(map[string]*model.Partition)
 	for rows.Next() {
-		var pID, tID, tPartitionID sql.NullString
-		var intervalMs int64
-		var once bool
+		var pID, tID, tPartitionID *string
+		var intervalMs *int64
+		var once *bool
 		if err := rows.Scan(&pID, &tID, &tPartitionID, &intervalMs, &once); err != nil {
 			return nil, err
 		}
-		if !pID.Valid {
+		if pID == nil {
 			continue
 		}
-		p, exists := partitions[pID.String]
+		p, exists := partitions[*pID]
 		if !exists {
-			p = &model.Partition{ID: pID.String}
-			partitions[pID.String] = p
+			p = &model.Partition{ID: *pID}
+			partitions[*pID] = p
 		}
-		if tID.Valid {
+		if tID != nil {
+			// Capture the id for the callback closure
+			timerID := *tID
 			timer := &model.Timer{
-				ID:        tID.String,
-				Partition: tPartitionID.String,
-				Interval:  time.Duration(intervalMs) * time.Millisecond,
-				Once:      once,
+				ID:        timerID,
+				Partition: *tPartitionID,
+				Interval:  time.Duration(*intervalMs) * time.Millisecond,
+				Once:      *once,
 				Callback: func() {
-					log.Printf("Timer %s fired at %v", tID.String, time.Now())
+					log.Printf("Timer %s fired at %v", timerID, time.Now())
 				},
 			}
 			p.Timers = append(p.Timers, timer)
@@ -79,4 +89,34 @@ func countTimers(partitions []*model.Partition) int {
 		total += len(p.Timers)
 	}
 	return total
+}
+
+func (s *PostgresStore) ListenForChanges(ctx context.Context, onNotify func()) {
+	conn, err := s.pool.Acquire(ctx)
+	if err != nil {
+		log.Printf("Failed to acquire connection for listen: %v", err)
+		return
+	}
+	defer conn.Release()
+
+	_, err = conn.Exec(ctx, "LISTEN timers_changed")
+	if err != nil {
+		log.Printf("Failed to execute LISTEN: %v", err)
+		return
+	}
+
+	log.Println("Listening for timers_changed notifications...")
+	for {
+		_, err := conn.Conn().WaitForNotification(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			log.Printf("Error waiting for notification: %v", err)
+			time.Sleep(1 * time.Second)
+			continue
+		}
+		log.Println("Received NOTIFY: timers_changed")
+		onNotify()
+	}
 }

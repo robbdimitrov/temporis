@@ -63,7 +63,7 @@ go 1.26.0
 
 require (
     github.com/go-redis/redis/v9 v9.0.0
-    github.com/lib/pq v1.10.9
+    github.com/jackc/pgx/v5 v5.10.0
     github.com/hashicorp/memberlist v0.5.0
     github.com/spaolacci/murmur3 v1.1.0
 )
