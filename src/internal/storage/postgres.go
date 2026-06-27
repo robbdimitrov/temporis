@@ -20,7 +20,6 @@ func NewPostgresStore(url string) (*PostgresStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Verify connection
 	if err := pool.Ping(ctx); err != nil {
 		return nil, err
 	}
@@ -62,8 +61,7 @@ func (s *PostgresStore) GetPartitions(ctx context.Context) ([]*model.Partition, 
 			partitions[*pID] = p
 		}
 		if tID != nil {
-			// Capture the id for the callback closure
-			timerID := *tID
+			timerID := *tID // capture for closure
 			timer := &model.Timer{
 				ID:        timerID,
 				Partition: *tPartitionID,
@@ -105,7 +103,7 @@ func (s *PostgresStore) ListenForChanges(ctx context.Context, onNotify func()) {
 			continue
 		}
 
-		_, err = conn.Exec(ctx, "LISTEN timers_changed")
+		_, err = conn.Exec(ctx, "LISTEN config_changed")
 		if err != nil {
 			slog.Error("Failed to execute LISTEN", "error", err)
 			conn.Release()
@@ -113,7 +111,7 @@ func (s *PostgresStore) ListenForChanges(ctx context.Context, onNotify func()) {
 			continue
 		}
 
-		slog.Info("Listening for timers_changed notifications...")
+		slog.Info("Listening for config_changed notifications...")
 		for {
 			_, err := conn.Conn().WaitForNotification(ctx)
 			if err != nil {
@@ -122,12 +120,12 @@ func (s *PostgresStore) ListenForChanges(ctx context.Context, onNotify func()) {
 					return
 				}
 				slog.Error("Error waiting for notification", "error", err)
-				break // Break inner loop to reconnect
+				break
 			}
-			slog.Info("Received NOTIFY: timers_changed")
+			slog.Info("Received NOTIFY: config_changed")
 			onNotify()
 		}
 		conn.Release()
-		time.Sleep(1 * time.Second) // Backoff before reconnect
+		time.Sleep(1 * time.Second)
 	}
 }

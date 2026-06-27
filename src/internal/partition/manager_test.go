@@ -11,6 +11,7 @@ import (
 
 type mockTracker struct {
 	hasFired     func(id string) bool
+	claimFiring  func(id string, t time.Time) bool
 	recordFiring func(id string, t time.Time) bool
 }
 
@@ -19,6 +20,13 @@ func (m *mockTracker) HasFired(ctx context.Context, timerID string) bool {
 		return m.hasFired(timerID)
 	}
 	return false
+}
+
+func (m *mockTracker) ClaimFiring(ctx context.Context, timerID string, t time.Time) bool {
+	if m.claimFiring != nil {
+		return m.claimFiring(timerID, t)
+	}
+	return true
 }
 
 func (m *mockTracker) RecordFiring(ctx context.Context, timerID string, t time.Time) bool {
@@ -48,17 +56,15 @@ func TestManager_StartTimers_Once(t *testing.T) {
 		Timers: []*model.Timer{timer},
 	}
 
-	firedCount := 0
-	recordFiring := func(id string, tm time.Time) bool {
-		mu.Lock()
-		firedCount++
-		mu.Unlock()
-		return true
-	}
-
+	claimCount := 0
 	tracker := &mockTracker{
-		hasFired:     func(id string) bool { return false },
-		recordFiring: recordFiring,
+		hasFired: func(id string) bool { return false },
+		claimFiring: func(id string, tm time.Time) bool {
+			mu.Lock()
+			claimCount++
+			mu.Unlock()
+			return true
+		},
 	}
 
 	m := NewManager(partition, tracker)
@@ -75,8 +81,8 @@ func TestManager_StartTimers_Once(t *testing.T) {
 	if !callbackCalled {
 		t.Errorf("Expected callback to be called")
 	}
-	if firedCount != 1 {
-		t.Errorf("Expected firedCount to be 1, got %d", firedCount)
+	if claimCount != 1 {
+		t.Errorf("Expected ClaimFiring to be called once, got %d", claimCount)
 	}
 }
 
@@ -97,7 +103,7 @@ func TestManager_StartTimers_AlreadyFired(t *testing.T) {
 	}
 
 	tracker := &mockTracker{
-		hasFired: func(id string) bool { return true }, // already fired
+		hasFired: func(id string) bool { return true },
 	}
 
 	m := NewManager(partition, tracker)
@@ -143,7 +149,7 @@ func TestManager_StartTimers_Recurring(t *testing.T) {
 	m.StartTimers(ctx)
 
 	time.Sleep(35 * time.Millisecond)
-	cancel() // Stop timers
+	cancel()
 
 	mu.Lock()
 	count := callbackCount

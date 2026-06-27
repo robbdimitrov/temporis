@@ -14,17 +14,21 @@ CREATE TABLE timers (
     once BOOLEAN NOT NULL
 );
 
-CREATE OR REPLACE FUNCTION notify_timers_change()
+CREATE OR REPLACE FUNCTION notify_config_change()
 RETURNS trigger AS $$
 BEGIN
-  PERFORM pg_notify('timers_changed', '');
+  PERFORM pg_notify('config_changed', '');
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER timers_changed_trigger
+CREATE TRIGGER partitions_config_trigger
+AFTER INSERT OR UPDATE OR DELETE ON partitions
+FOR EACH STATEMENT EXECUTE FUNCTION notify_config_change();
+
+CREATE TRIGGER timers_config_trigger
 AFTER INSERT OR UPDATE OR DELETE ON timers
-FOR EACH STATEMENT EXECUTE FUNCTION notify_timers_change();
+FOR EACH STATEMENT EXECUTE FUNCTION notify_config_change();
 
 INSERT INTO partitions (id) VALUES ('partition-1'), ('partition-2'), ('partition-3'), ('partition-4'), ('partition-5'), ('partition-6');
 
