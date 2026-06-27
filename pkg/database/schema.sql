@@ -1,6 +1,3 @@
-CREATE DATABASE timers;
-
-\c timers
 
 CREATE TABLE partitions (
     id VARCHAR(255) PRIMARY KEY
