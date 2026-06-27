@@ -47,11 +47,9 @@ func NewManager(partition *model.Partition, tracker ExecutionTracker, scheduler 
 	}
 }
 
-// StartTimers starts all timers in the partition.
+// StartTimers begins execution of all timers in the partition.
+// It blocks until all timer goroutines have exited (e.g., after context cancellation).
 func (m *Manager) StartTimers(ctx context.Context) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	logger := slog.With("partition_id", m.Partition.ID)
 
 	logger.Info("StartTimers called", "timer_count", len(m.Partition.Timers))
@@ -60,6 +58,7 @@ func (m *Manager) StartTimers(ctx context.Context) {
 		return
 	}
 
+	var wg sync.WaitGroup
 	for i, timer := range m.Partition.Timers {
 		if timer.ID == "" {
 			logger.Warn("Invalid timer: empty ID, skipping", "index", i)
@@ -69,8 +68,13 @@ func (m *Manager) StartTimers(ctx context.Context) {
 			logger.Warn("Invalid timer: interval <= 0, skipping", "timer_id", timer.ID, "interval", timer.Interval)
 			continue
 		}
-		go m.startTimer(ctx, timer, logger.With("timer_id", timer.ID))
+		wg.Add(1)
+		go func(t *model.Timer) {
+			defer wg.Done()
+			m.startTimer(ctx, t, logger.With("timer_id", t.ID))
+		}(timer)
 	}
+	wg.Wait()
 }
 
 // startTimer executes a single timer's logic.

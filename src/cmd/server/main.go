@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -62,11 +63,37 @@ func main() {
 		}
 	}()
 
+	// Start HTTP server for probes
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	})
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ready"))
+	})
+	probeSrv := &http.Server{
+		Addr:    ":8080",
+		Handler: mux,
+	}
+	go func() {
+		slog.Info("Starting probe server on :8080")
+		if err := probeSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("Probe server failed", "error", err)
+		}
+	}()
+
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	<-sigCh
 	slog.Info("Shutting down... sending cancel to service")
 	cancel()
+
+	// Shut down probe server
+	probeCtx, probeCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer probeCancel()
+	_ = probeSrv.Shutdown(probeCtx)
 
 	// Wait for the service to drain all running partition timers
 	<-done

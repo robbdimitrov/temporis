@@ -19,6 +19,26 @@ spec:
         ports:
         - containerPort: 7946
           name: gossip
+        - containerPort: 8080
+          name: http-probes
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "64Mi"
+          limits:
+            memory: "128Mi"
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
         env:
         - name: SERVICE_NAME
           valueFrom:
