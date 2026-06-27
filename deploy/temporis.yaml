@@ -14,8 +14,8 @@ spec:
     spec:
       containers:
       - name: temporis
-        image: localhost:5000/temporis:latest
-        imagePullPolicy: Always
+        image: temporis:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 7946
           name: gossip
@@ -35,7 +35,7 @@ spec:
               name: timer-secret
               key: valkey-url
         - name: SEED_NODE
-          value: temporis.default.svc.cluster.local:7946
+          value: temporis.temporis.svc.cluster.local:7946
 ---
 apiVersion: v1
 kind: Service
