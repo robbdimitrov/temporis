@@ -18,6 +18,8 @@ firings.
   in PostgreSQL.
 - **Execution Tracking:** Logs timer firings to Valkey, keeping a rolling
   history of the last 10 firings per timer.
+- **Delivery Guarantee:** Provides at-most-once delivery for one-time timers.
+  Partition rebalances seamlessly resume countdowns without resetting intervals.
 
 ## Architecture
 

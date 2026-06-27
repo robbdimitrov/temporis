@@ -11,7 +11,8 @@ CREATE TABLE timers (
     partition_id VARCHAR(255) REFERENCES partitions(id),
     name VARCHAR(100),
     interval_ms BIGINT NOT NULL,
-    once BOOLEAN NOT NULL
+    once BOOLEAN NOT NULL,
+    scheduled_at TIMESTAMPTZ
 );
 
 CREATE OR REPLACE FUNCTION notify_config_change()

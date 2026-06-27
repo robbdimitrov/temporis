@@ -20,18 +20,26 @@ type ExecutionTracker interface {
 	RecordFiring(ctx context.Context, timerID string, t time.Time) bool
 }
 
+// ScheduleTracker persists the first pick-up timestamp for once-timers so that
+// the target fire time is stable across partition rebalances.
+type ScheduleTracker interface {
+	ScheduleOnce(ctx context.Context, timerID string) (time.Time, error)
+}
+
 // Manager handles the execution of timers within a partition.
 type Manager struct {
 	Partition *model.Partition
 	mu        sync.Mutex
 	tracker   ExecutionTracker
+	scheduler ScheduleTracker
 }
 
 // NewManager creates a new Manager for a partition.
-func NewManager(partition *model.Partition, tracker ExecutionTracker) *Manager {
+func NewManager(partition *model.Partition, tracker ExecutionTracker, scheduler ScheduleTracker) *Manager {
 	return &Manager{
 		Partition: partition,
 		tracker:   tracker,
+		scheduler: scheduler,
 	}
 }
 
@@ -68,20 +76,43 @@ func (m *Manager) startTimer(ctx context.Context, timer *model.Timer, logger *sl
 			logger.Info("One-time timer already claimed, skipping")
 			return
 		}
-		timerObj := time.NewTimer(timer.Interval)
-		defer timerObj.Stop()
 
-		select {
-		case <-timerObj.C:
-			if !m.tracker.ClaimFiring(ctx, timer.ID, time.Now()) {
+		// Compute remaining wait from the stable first-schedule time so that
+		// rebalancing nodes resume mid-interval rather than restart it.
+		remaining := timer.Interval
+		scheduledAt, err := m.scheduler.ScheduleOnce(ctx, timer.ID)
+		if err != nil {
+			logger.Warn("Failed to get schedule time, using full interval", "error", err)
+		} else {
+			remaining = time.Until(scheduledAt.Add(timer.Interval))
+		}
+
+		// claimAndFire uses a non-cancellable context so a concurrent partition
+		// handoff cannot prevent the SET NX from completing.
+		claimAndFire := func() {
+			claimCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			defer cancel()
+			if !m.tracker.ClaimFiring(claimCtx, timer.ID, time.Now()) {
 				logger.Info("One-time timer already claimed by another node, skipping")
 				return
 			}
 			logger.Info("Firing one-time timer")
 			timer.Callback()
+		}
+
+		if remaining <= 0 {
+			claimAndFire()
+			return
+		}
+
+		timerObj := time.NewTimer(remaining)
+		defer timerObj.Stop()
+
+		select {
+		case <-timerObj.C:
+			claimAndFire()
 		case <-ctx.Done():
 			logger.Info("Timer cancelled by context", "error", ctx.Err())
-			return
 		}
 		return
 	}

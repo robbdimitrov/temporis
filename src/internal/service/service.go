@@ -112,7 +112,7 @@ func (s *Service) syncWithCluster(ctx context.Context) {
 		slog.Info("Partition assigned", "partition_id", p.ID, "node", owner, "timer_count", len(p.Timers))
 		if owner == s.cfg.ServiceName {
 			slog.Info("This pod owns partition", "partition_id", p.ID)
-			newPartitions[p.ID] = partition.NewManager(p, s.valkeyStore)
+			newPartitions[p.ID] = partition.NewManager(p, s.valkeyStore, s.pgStore)
 		}
 	}
 

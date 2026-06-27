@@ -36,6 +36,17 @@ func (m *mockTracker) RecordFiring(ctx context.Context, timerID string, t time.T
 	return true
 }
 
+type mockScheduleTracker struct {
+	scheduleOnce func(id string) (time.Time, error)
+}
+
+func (m *mockScheduleTracker) ScheduleOnce(ctx context.Context, timerID string) (time.Time, error) {
+	if m.scheduleOnce != nil {
+		return m.scheduleOnce(timerID)
+	}
+	return time.Now(), nil
+}
+
 func TestManager_StartTimers_Once(t *testing.T) {
 	callbackCalled := false
 	var mu sync.Mutex
@@ -67,7 +78,7 @@ func TestManager_StartTimers_Once(t *testing.T) {
 		},
 	}
 
-	m := NewManager(partition, tracker)
+	m := NewManager(partition, tracker, &mockScheduleTracker{})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -106,7 +117,7 @@ func TestManager_StartTimers_AlreadyFired(t *testing.T) {
 		hasFired: func(id string) bool { return true },
 	}
 
-	m := NewManager(partition, tracker)
+	m := NewManager(partition, tracker, &mockScheduleTracker{})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -143,7 +154,7 @@ func TestManager_StartTimers_Recurring(t *testing.T) {
 		hasFired: func(id string) bool { return false },
 	}
 
-	m := NewManager(partition, tracker)
+	m := NewManager(partition, tracker, &mockScheduleTracker{})
 	ctx, cancel := context.WithCancel(context.Background())
 	
 	m.StartTimers(ctx)
@@ -157,5 +168,57 @@ func TestManager_StartTimers_Recurring(t *testing.T) {
 
 	if count < 2 {
 		t.Errorf("Expected callback to be called at least twice, got %d", count)
+	}
+}
+
+func TestManager_StartTimers_Once_MidInterval(t *testing.T) {
+	callbackCalled := false
+	var mu sync.Mutex
+
+	timer := &model.Timer{
+		ID:       "timer1",
+		Interval: 1 * time.Hour, // long interval
+		Once:     true,
+		Callback: func() {
+			mu.Lock()
+			callbackCalled = true
+			mu.Unlock()
+		},
+	}
+
+	partition := &model.Partition{
+		ID:     "part1",
+		Timers: []*model.Timer{timer},
+	}
+
+	tracker := &mockTracker{
+		hasFired: func(id string) bool { return false },
+		claimFiring: func(id string, tm time.Time) bool {
+			return true
+		},
+	}
+
+	// Mock schedule to say it was scheduled (1 hour - 10ms) ago.
+	// So only 10ms remains.
+	scheduleTracker := &mockScheduleTracker{
+		scheduleOnce: func(id string) (time.Time, error) {
+			return time.Now().Add(-1 * time.Hour).Add(10 * time.Millisecond), nil
+		},
+	}
+
+	m := NewManager(partition, tracker, scheduleTracker)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	m.StartTimers(ctx)
+
+	// Wait a bit more than the remaining 10ms, but much less than 1 hour.
+	time.Sleep(50 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if !callbackCalled {
+		t.Errorf("Expected callback to be called quickly due to mid-interval scheduling")
 	}
 }

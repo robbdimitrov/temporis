@@ -90,6 +90,22 @@ func countTimers(partitions []*model.Partition) int {
 	return total
 }
 
+// ScheduleOnce atomically records the first pick-up time for a once-timer and
+// returns it. Subsequent calls return the already-set value unchanged, so the
+// target fire time is stable across partition rebalances.
+func (s *PostgresStore) ScheduleOnce(ctx context.Context, timerID string) (time.Time, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	var scheduledAt time.Time
+	err := s.pool.QueryRow(ctx, `
+		UPDATE timers
+		SET scheduled_at = COALESCE(scheduled_at, NOW())
+		WHERE id::text = $1
+		RETURNING scheduled_at
+	`, timerID).Scan(&scheduledAt)
+	return scheduledAt, err
+}
+
 func (s *PostgresStore) ListenForChanges(ctx context.Context, onNotify func()) {
 	for {
 		if ctx.Err() != nil {
