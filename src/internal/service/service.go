@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -41,7 +41,7 @@ func (s *Service) Run(ctx context.Context) error {
 	// Join gossip cluster with seed nodes
 	seedNodes := []string{s.cfg.SeedNode}
 	if err := s.gossipMgr.Join(seedNodes); err != nil {
-		log.Printf("Failed to join gossip: %v", err)
+		slog.Error("Failed to join gossip", "error", err)
 	}
 
 	syncChan := make(chan struct{}, 1)
@@ -54,7 +54,7 @@ func (s *Service) Run(ctx context.Context) error {
 
 	// Listen for Postgres notifications
 	go s.pgStore.ListenForChanges(ctx, func() {
-		log.Println("Database changed, executing instant sync...")
+		slog.Info("Database changed, executing instant sync...")
 		triggerSync()
 	})
 
@@ -83,7 +83,7 @@ func (s *Service) syncWithCluster(ctx context.Context) {
 
 	// Step 1: Get the current list of active nodes from the gossip protocol
 	currentNodes := s.gossipMgr.Members()
-	log.Printf("Sync cycle: current nodes = %v", currentNodes)
+	slog.Info("Sync cycle starting", "current_nodes", currentNodes)
 
 	// Step 2: Track nodes currently in the hash ring
 	existingNodes := s.hashRing.Nodes()
@@ -98,35 +98,35 @@ func (s *Service) syncWithCluster(ctx context.Context) {
 	}
 
 	// Step 4: Load partitions from PostgreSQL
-	partitions, err := s.pgStore.GetPartitions()
+	partitions, err := s.pgStore.GetPartitions(ctx)
 	if err != nil {
-		log.Printf("Failed to load partitions: %v", err)
+		slog.Error("Failed to load partitions", "error", err)
 		return
 	}
-	log.Printf("Loaded %d partitions", len(partitions))
+	slog.Info("Partitions loaded from DB", "count", len(partitions))
 
 	// Step 5: Redistribute partitions
 	newPartitions := make(map[string]*partition.Manager)
 	for _, p := range partitions {
 		owner := s.hashRing.GetNode(p.ID)
-		log.Printf("Partition %s assigned to node %s (%d timers)", p.ID, owner, len(p.Timers))
+		slog.Info("Partition assigned", "partition_id", p.ID, "node", owner, "timer_count", len(p.Timers))
 		if owner == s.cfg.ServiceName {
-			log.Printf("This pod (%s) owns partition %s", s.cfg.ServiceName, p.ID)
-			newPartitions[p.ID] = partition.NewManager(p, s.valkeyStore.HasFired)
+			slog.Info("This pod owns partition", "partition_id", p.ID)
+			newPartitions[p.ID] = partition.NewManager(p, s.valkeyStore)
 		}
 	}
 
 	// Step 6: Stop partitions this pod no longer owns
 	for id, cancel := range s.cancelFuncs {
 		if _, exists := newPartitions[id]; !exists {
-			log.Printf("Stopping partition %s", id)
+			slog.Info("Stopping partition", "partition_id", id)
 			cancel() // Cancel the context to stop timers
 			delete(s.partitions, id)
 			delete(s.cancelFuncs, id)
 		}
 	}
 
-	log.Printf("Starting %d new partitions", len(newPartitions))
+	slog.Info("Starting new partitions", "count", len(newPartitions))
 	// Step 7: Start new partitions assigned to this pod
 	for id, mgr := range newPartitions {
 		if _, exists := s.partitions[id]; !exists {
@@ -134,10 +134,10 @@ func (s *Service) syncWithCluster(ctx context.Context) {
 			partitionCtx, cancel := context.WithCancel(ctx)
 			s.partitions[id] = mgr
 			s.cancelFuncs[id] = cancel
-			log.Printf("Launching StartTimers for partition %s with %d timers", id, len(mgr.Partition.Timers))
-			go mgr.StartTimers(partitionCtx, s.valkeyStore.RecordFiring)
+			slog.Info("Launching StartTimers for partition", "partition_id", id, "timer_count", len(mgr.Partition.Timers))
+			go mgr.StartTimers(partitionCtx)
 		} else {
-			log.Printf("Partition %s already running with %d timers", id, len(mgr.Partition.Timers))
+			slog.Info("Partition already running", "partition_id", id, "timer_count", len(mgr.Partition.Timers))
 		}
 	}
 }

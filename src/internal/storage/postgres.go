@@ -2,7 +2,7 @@ package storage
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"time"
 
 	"temporis/internal/model"
@@ -32,8 +32,9 @@ func (s *PostgresStore) Close() error {
 	return nil
 }
 
-func (s *PostgresStore) GetPartitions() ([]*model.Partition, error) {
-	ctx := context.Background()
+func (s *PostgresStore) GetPartitions(ctx context.Context) ([]*model.Partition, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	rows, err := s.pool.Query(ctx, `
 		SELECT p.id, t.id::text, t.partition_id, t.interval_ms, t.once
 		FROM partitions p
@@ -69,7 +70,7 @@ func (s *PostgresStore) GetPartitions() ([]*model.Partition, error) {
 				Interval:  time.Duration(*intervalMs) * time.Millisecond,
 				Once:      *once,
 				Callback: func() {
-					log.Printf("Timer %s fired at %v", timerID, time.Now())
+					slog.Info("Timer fired", "timer_id", timerID)
 				},
 			}
 			p.Timers = append(p.Timers, timer)
@@ -79,7 +80,7 @@ func (s *PostgresStore) GetPartitions() ([]*model.Partition, error) {
 	for _, p := range partitions {
 		result = append(result, p)
 	}
-	log.Printf("Loaded %d partitions with total %d timers", len(result), countTimers(result))
+	slog.Info("Loaded partitions", "partition_count", len(result), "timer_count", countTimers(result))
 	return result, nil
 }
 
@@ -99,20 +100,20 @@ func (s *PostgresStore) ListenForChanges(ctx context.Context, onNotify func()) {
 
 		conn, err := s.pool.Acquire(ctx)
 		if err != nil {
-			log.Printf("Failed to acquire connection for listen: %v", err)
+			slog.Error("Failed to acquire connection for listen", "error", err)
 			time.Sleep(2 * time.Second)
 			continue
 		}
 
 		_, err = conn.Exec(ctx, "LISTEN timers_changed")
 		if err != nil {
-			log.Printf("Failed to execute LISTEN: %v", err)
+			slog.Error("Failed to execute LISTEN", "error", err)
 			conn.Release()
 			time.Sleep(2 * time.Second)
 			continue
 		}
 
-		log.Println("Listening for timers_changed notifications...")
+		slog.Info("Listening for timers_changed notifications...")
 		for {
 			_, err := conn.Conn().WaitForNotification(ctx)
 			if err != nil {
@@ -120,10 +121,10 @@ func (s *PostgresStore) ListenForChanges(ctx context.Context, onNotify func()) {
 					conn.Release()
 					return
 				}
-				log.Printf("Error waiting for notification: %v", err)
+				slog.Error("Error waiting for notification", "error", err)
 				break // Break inner loop to reconnect
 			}
-			log.Println("Received NOTIFY: timers_changed")
+			slog.Info("Received NOTIFY: timers_changed")
 			onNotify()
 		}
 		conn.Release()

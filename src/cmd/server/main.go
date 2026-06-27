@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -14,46 +14,54 @@ import (
 )
 
 func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		slog.Error("Failed to load config", "error", err)
+		os.Exit(1)
 	}
 
 	pgStore, err := storage.NewPostgresStore(cfg.PostgresURL)
 	if err != nil {
-		log.Fatalf("Failed to init postgres: %v", err)
+		slog.Error("Failed to init postgres", "error", err)
+		os.Exit(1)
 	}
 	defer pgStore.Close()
 
 	valkeyStore, err := storage.NewValkeyStore(cfg.ValkeyURL)
 	if err != nil {
-		log.Fatalf("Failed to init valkey: %v", err)
+		slog.Error("Failed to init valkey", "error", err)
+		os.Exit(1)
 	}
 	defer valkeyStore.Close()
 
 	gossipMgr, err := gossip.NewGossipManager(cfg.GossipPort, cfg.ServiceName)
 	if err != nil {
-		log.Fatalf("Failed to init gossip: %v", err)
+		slog.Error("Failed to init gossip", "error", err)
+		os.Exit(1)
 	}
 	defer gossipMgr.Shutdown()
 
 	svc, err := service.NewService(cfg, pgStore, valkeyStore, gossipMgr)
 	if err != nil {
-		log.Fatalf("Failed to init service: %v", err)
+		slog.Error("Failed to init service", "error", err)
+		os.Exit(1)
 	}
 
 	go func() {
-		log.Println("Starting service...")
+		slog.Info("Starting service...")
 		if err := svc.Run(ctx); err != nil {
-			log.Printf("Service error: %v", err)
+			slog.Error("Service error", "error", err)
 		}
 	}()
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	<-sigCh
-	log.Println("Shutting down...")
+	slog.Info("Shutting down...")
 }

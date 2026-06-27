@@ -2,58 +2,66 @@ package partition
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
 	"temporis/internal/model"
 )
 
+// ExecutionTracker defines how timer firings are recorded and checked.
+type ExecutionTracker interface {
+	HasFired(ctx context.Context, timerID string) bool
+	RecordFiring(ctx context.Context, timerID string, t time.Time) bool
+}
+
 // Manager handles the execution of timers within a partition.
 type Manager struct {
 	Partition *model.Partition
 	mu        sync.Mutex
-	hasFired  func(timerID string) bool
+	tracker   ExecutionTracker
 }
 
 // NewManager creates a new Manager for a partition.
-func NewManager(partition *model.Partition, hasFired func(timerID string) bool) *Manager {
+func NewManager(partition *model.Partition, tracker ExecutionTracker) *Manager {
 	return &Manager{
 		Partition: partition,
-		hasFired:  hasFired,
+		tracker:   tracker,
 	}
 }
 
-// StartTimers starts all timers in the partition, using the provided recordFiring function to log firings.
-func (m *Manager) StartTimers(ctx context.Context, recordFiring func(timerID string, t time.Time) bool) {
+// StartTimers starts all timers in the partition.
+func (m *Manager) StartTimers(ctx context.Context) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	log.Printf("StartTimers called for partition %s with %d timers", m.Partition.ID, len(m.Partition.Timers))
+	logger := slog.With("partition_id", m.Partition.ID)
+
+	logger.Info("StartTimers called", "timer_count", len(m.Partition.Timers))
 	if len(m.Partition.Timers) == 0 {
-		log.Printf("No timers to start for partition %s", m.Partition.ID)
+		logger.Info("No timers to start")
 		return
 	}
 
 	for i, timer := range m.Partition.Timers {
 		if timer.ID == "" {
-			log.Printf("Invalid timer at index %d for partition %s: empty ID, skipping", i, m.Partition.ID)
+			logger.Warn("Invalid timer: empty ID, skipping", "index", i)
 			continue
 		}
 		if timer.Interval <= 0 {
-			log.Printf("Invalid timer %s for partition %s: interval=%v, skipping", timer.ID, m.Partition.ID, timer.Interval)
+			logger.Warn("Invalid timer: interval <= 0, skipping", "timer_id", timer.ID, "interval", timer.Interval)
 			continue
 		}
-		go m.startTimer(ctx, timer, recordFiring)
+		go m.startTimer(ctx, timer, logger.With("timer_id", timer.ID))
 	}
 }
 
 // startTimer executes a single timer's logic.
-func (m *Manager) startTimer(ctx context.Context, timer *model.Timer, recordFiring func(timerID string, t time.Time) bool) {
+func (m *Manager) startTimer(ctx context.Context, timer *model.Timer, logger *slog.Logger) {
 	if timer.Once {
 		// Check if timer has already fired
-		if m.hasFired(timer.ID) {
-			log.Printf("One-time timer %s has already fired, skipping", timer.ID)
+		if m.tracker.HasFired(ctx, timer.ID) {
+			logger.Info("One-time timer has already fired, skipping")
 			return
 		}
 		timerObj := time.NewTimer(timer.Interval)
@@ -61,11 +69,11 @@ func (m *Manager) startTimer(ctx context.Context, timer *model.Timer, recordFiri
 
 		select {
 		case <-timerObj.C:
-			log.Printf("Firing one-time timer %s at %v", timer.ID, time.Now())
+			logger.Info("Firing one-time timer")
 			timer.Callback()
-			recordFiring(timer.ID, time.Now())
+			m.tracker.RecordFiring(ctx, timer.ID, time.Now())
 		case <-ctx.Done():
-			log.Printf("Timer %s cancelled by context: %v", timer.ID, ctx.Err())
+			logger.Info("Timer cancelled by context", "error", ctx.Err())
 			return
 		}
 		return
@@ -78,11 +86,11 @@ func (m *Manager) startTimer(ctx context.Context, timer *model.Timer, recordFiri
 	for {
 		select {
 		case t := <-ticker.C:
-			log.Printf("Firing recurring timer %s at %v", timer.ID, t)
+			logger.Info("Firing recurring timer", "time", t)
 			timer.Callback()
-			recordFiring(timer.ID, time.Now())
+			m.tracker.RecordFiring(ctx, timer.ID, time.Now())
 		case <-ctx.Done():
-			log.Printf("Timer %s cancelled by context: %v", timer.ID, ctx.Err())
+			logger.Info("Timer cancelled by context", "error", ctx.Err())
 			return
 		}
 	}

@@ -9,6 +9,25 @@ import (
 	"temporis/internal/model"
 )
 
+type mockTracker struct {
+	hasFired     func(id string) bool
+	recordFiring func(id string, t time.Time) bool
+}
+
+func (m *mockTracker) HasFired(ctx context.Context, timerID string) bool {
+	if m.hasFired != nil {
+		return m.hasFired(timerID)
+	}
+	return false
+}
+
+func (m *mockTracker) RecordFiring(ctx context.Context, timerID string, t time.Time) bool {
+	if m.recordFiring != nil {
+		return m.recordFiring(timerID, t)
+	}
+	return true
+}
+
 func TestManager_StartTimers_Once(t *testing.T) {
 	callbackCalled := false
 	var mu sync.Mutex
@@ -29,10 +48,6 @@ func TestManager_StartTimers_Once(t *testing.T) {
 		Timers: []*model.Timer{timer},
 	}
 
-	m := NewManager(partition, func(id string) bool { return false })
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	firedCount := 0
 	recordFiring := func(id string, tm time.Time) bool {
 		mu.Lock()
@@ -41,7 +56,16 @@ func TestManager_StartTimers_Once(t *testing.T) {
 		return true
 	}
 
-	m.StartTimers(ctx, recordFiring)
+	tracker := &mockTracker{
+		hasFired:     func(id string) bool { return false },
+		recordFiring: recordFiring,
+	}
+
+	m := NewManager(partition, tracker)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	m.StartTimers(ctx)
 
 	time.Sleep(50 * time.Millisecond)
 
@@ -72,11 +96,15 @@ func TestManager_StartTimers_AlreadyFired(t *testing.T) {
 		Timers: []*model.Timer{timer},
 	}
 
-	m := NewManager(partition, func(id string) bool { return true }) // already fired
+	tracker := &mockTracker{
+		hasFired: func(id string) bool { return true }, // already fired
+	}
+
+	m := NewManager(partition, tracker)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m.StartTimers(ctx, func(id string, tm time.Time) bool { return true })
+	m.StartTimers(ctx)
 
 	time.Sleep(30 * time.Millisecond)
 
@@ -105,10 +133,14 @@ func TestManager_StartTimers_Recurring(t *testing.T) {
 		Timers: []*model.Timer{timer},
 	}
 
-	m := NewManager(partition, func(id string) bool { return false })
+	tracker := &mockTracker{
+		hasFired: func(id string) bool { return false },
+	}
+
+	m := NewManager(partition, tracker)
 	ctx, cancel := context.WithCancel(context.Background())
 	
-	m.StartTimers(ctx, func(id string, tm time.Time) bool { return true })
+	m.StartTimers(ctx)
 
 	time.Sleep(35 * time.Millisecond)
 	cancel() // Stop timers
