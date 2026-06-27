@@ -2,7 +2,9 @@ package partition
 
 import (
 	"context"
+	"hash/fnv"
 	"log/slog"
+	"math"
 	"sync"
 	"time"
 
@@ -18,6 +20,8 @@ type ExecutionTracker interface {
 	ClaimFiring(ctx context.Context, timerID string, t time.Time) bool
 	// RecordFiring appends a timestamp to a recurring timer's history.
 	RecordFiring(ctx context.Context, timerID string, t time.Time) bool
+	// GetLastFirings returns the recent firing history for a recurring timer.
+	GetLastFirings(ctx context.Context, timerID string) ([]time.Time, error)
 }
 
 // ScheduleTracker persists the first pick-up timestamp for once-timers so that
@@ -71,65 +75,124 @@ func (m *Manager) StartTimers(ctx context.Context) {
 
 // startTimer executes a single timer's logic.
 func (m *Manager) startTimer(ctx context.Context, timer *model.Timer, logger *slog.Logger) {
+	var nextFire time.Time
+
+	// 1. Determine the target time for the next firing
 	if timer.Once {
 		if m.tracker.HasFired(ctx, timer.ID) {
 			logger.Info("One-time timer already claimed, skipping")
 			return
 		}
-
-		// Compute remaining wait from the stable first-schedule time so that
-		// rebalancing nodes resume mid-interval rather than restart it.
-		remaining := timer.Interval
 		scheduledAt, err := m.scheduler.ScheduleOnce(ctx, timer.ID)
 		if err != nil {
 			logger.Warn("Failed to get schedule time, using full interval", "error", err)
+			nextFire = time.Now().Add(timer.Interval)
 		} else {
-			remaining = time.Until(scheduledAt.Add(timer.Interval))
+			nextFire = scheduledAt.Add(timer.Interval)
+		}
+	} else {
+		if firings, err := m.tracker.GetLastFirings(ctx, timer.ID); err == nil && len(firings) > 0 {
+			nextFire = firings[0].Add(timer.Interval)
+		} else {
+			if err != nil {
+				logger.Warn("Failed to get last firings, using full interval", "error", err)
+			}
+			nextFire = time.Now().Add(timer.Interval)
+		}
+	}
+
+	// Calculate maximum jitter once.
+	// Base jitter is 10% of the interval.
+	maxJitter := timer.Interval / 10
+
+	// Dynamically expand the jitter window for extremely heavy partitions 
+	// Cap the total spread at 1 hour to maintain an acceptable recovery SLA.
+	volumeJitter := time.Duration(len(m.Partition.Timers)) * 2 * time.Millisecond
+	if volumeJitter > time.Hour {
+		volumeJitter = time.Hour
+	}
+	if volumeJitter > maxJitter {
+		maxJitter = volumeJitter
+	}
+
+	// Never jitter longer than the timer's own interval to preserve logical ordering
+	if maxJitter > timer.Interval {
+		maxJitter = timer.Interval
+	}
+
+	// Pre-allocate a stopped timer to avoid GC pressure in the recurring loop
+	timerObj := time.NewTimer(math.MaxInt64)
+	timerObj.Stop()
+
+	// 2. Execution Loop
+	for {
+		delay := time.Until(nextFire)
+
+		var jitter time.Duration
+		if maxJitter > 0 {
+			// Deterministic Hashing: consistently assign the same timer to the same 
+			// bucket across restarts, avoiding random double-penalty delays.
+			h := fnv.New32a()
+			h.Write([]byte(timer.ID))
+			hashVal := int64(h.Sum32())
+
+			// Randomize into discrete 1-minute buckets.
+			// Matches standard cron granularity and maximizes database pool reuse.
+			bucketSize := int64(time.Minute)
+			if numBuckets := int64(maxJitter) / bucketSize; numBuckets > 1 {
+				jitter = time.Duration((hashVal % numBuckets) * bucketSize)
+			} else {
+				// For intervals smaller than the bucket size, fallback to continuous jitter
+				jitter = time.Duration(hashVal % int64(maxJitter))
+			}
 		}
 
-		// claimAndFire uses a non-cancellable context so a concurrent partition
-		// handoff cannot prevent the SET NX from completing.
-		claimAndFire := func() {
+		if delay <= 0 {
+			// Catch-up mode: ignore the negative delay but still wait the jitter duration
+			// to spread out the thundering herd of past-due timers.
+			logger.Info("Timer is past due, applying jitter for catch-up", "missed_by", -delay, "jitter", jitter)
+			delay = jitter
+		} else {
+			// Normal mode: wait until nextFire plus some jitter
+			delay += jitter
+		}
+
+		timerObj.Reset(delay)
+		select {
+		case <-timerObj.C:
+		case <-ctx.Done():
+			timerObj.Stop()
+			logger.Info("Timer cancelled by context", "error", ctx.Err())
+			return
+		}
+
+		if timer.Once {
 			claimCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-			defer cancel()
-			if !m.tracker.ClaimFiring(claimCtx, timer.ID, time.Now()) {
+			claimed := m.tracker.ClaimFiring(claimCtx, timer.ID, time.Now())
+			cancel()
+			if !claimed {
 				logger.Info("One-time timer already claimed by another node, skipping")
 				return
 			}
 			logger.Info("Firing one-time timer")
 			timer.Callback()
-		}
-
-		if remaining <= 0 {
-			claimAndFire()
 			return
 		}
 
-		timerObj := time.NewTimer(remaining)
-		defer timerObj.Stop()
-
-		select {
-		case <-timerObj.C:
-			claimAndFire()
-		case <-ctx.Done():
-			logger.Info("Timer cancelled by context", "error", ctx.Err())
-		}
-		return
-	}
-
-	// Recurring timer
-	ticker := time.NewTicker(timer.Interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case t := <-ticker.C:
-			logger.Info("Firing recurring timer", "time", t)
-			timer.Callback()
-			m.tracker.RecordFiring(ctx, timer.ID, time.Now())
-		case <-ctx.Done():
-			logger.Info("Timer cancelled by context", "error", ctx.Err())
+		// Recurring timer
+		if ctx.Err() != nil {
+			logger.Info("Timer cancelled by context right before execution", "error", ctx.Err())
 			return
+		}
+
+		logger.Info("Firing recurring timer")
+		timer.Callback()
+		m.tracker.RecordFiring(ctx, timer.ID, time.Now())
+
+		// Align to the next future multiple of the interval to prevent rapid-fire cascades
+		now := time.Now()
+		for !nextFire.After(now) {
+			nextFire = nextFire.Add(timer.Interval)
 		}
 	}
 }

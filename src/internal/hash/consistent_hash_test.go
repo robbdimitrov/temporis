@@ -34,7 +34,7 @@ func TestConsistentHash_RemoveNode(t *testing.T) {
 
 func TestConsistentHash_GetNode(t *testing.T) {
 	ch := NewConsistentHash(3)
-	
+
 	// Should return empty if no nodes
 	if node := ch.GetNode("test_key"); node != "" {
 		t.Errorf("Expected empty node, got %s", node)

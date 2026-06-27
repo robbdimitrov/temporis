@@ -10,9 +10,10 @@ import (
 )
 
 type mockTracker struct {
-	hasFired     func(id string) bool
-	claimFiring  func(id string, t time.Time) bool
-	recordFiring func(id string, t time.Time) bool
+	hasFired       func(id string) bool
+	claimFiring    func(id string, t time.Time) bool
+	recordFiring   func(id string, t time.Time) bool
+	getLastFirings func(id string) ([]time.Time, error)
 }
 
 func (m *mockTracker) HasFired(ctx context.Context, timerID string) bool {
@@ -34,6 +35,13 @@ func (m *mockTracker) RecordFiring(ctx context.Context, timerID string, t time.T
 		return m.recordFiring(timerID, t)
 	}
 	return true
+}
+
+func (m *mockTracker) GetLastFirings(ctx context.Context, timerID string) ([]time.Time, error) {
+	if m.getLastFirings != nil {
+		return m.getLastFirings(timerID)
+	}
+	return nil, nil
 }
 
 type mockScheduleTracker struct {
@@ -156,7 +164,7 @@ func TestManager_StartTimers_Recurring(t *testing.T) {
 
 	m := NewManager(partition, tracker, &mockScheduleTracker{})
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	m.StartTimers(ctx)
 
 	time.Sleep(35 * time.Millisecond)
@@ -177,7 +185,7 @@ func TestManager_StartTimers_Once_MidInterval(t *testing.T) {
 
 	timer := &model.Timer{
 		ID:       "timer1",
-		Interval: 1 * time.Hour, // long interval
+		Interval: 200 * time.Millisecond,
 		Once:     true,
 		Callback: func() {
 			mu.Lock()
@@ -198,11 +206,11 @@ func TestManager_StartTimers_Once_MidInterval(t *testing.T) {
 		},
 	}
 
-	// Mock schedule to say it was scheduled (1 hour - 10ms) ago.
+	// Mock schedule to say it was scheduled (interval - 10ms) ago.
 	// So only 10ms remains.
 	scheduleTracker := &mockScheduleTracker{
 		scheduleOnce: func(id string) (time.Time, error) {
-			return time.Now().Add(-1 * time.Hour).Add(10 * time.Millisecond), nil
+			return time.Now().Add(-200 * time.Millisecond).Add(10 * time.Millisecond), nil
 		},
 	}
 
@@ -220,5 +228,50 @@ func TestManager_StartTimers_Once_MidInterval(t *testing.T) {
 
 	if !callbackCalled {
 		t.Errorf("Expected callback to be called quickly due to mid-interval scheduling")
+	}
+}
+
+func TestManager_StartTimers_Recurring_Resume(t *testing.T) {
+	var mu sync.Mutex
+	callbackCount := 0
+
+	timer := &model.Timer{
+		ID:       "timer1",
+		Interval: 200 * time.Millisecond,
+		Once:     false,
+		Callback: func() {
+			mu.Lock()
+			callbackCount++
+			mu.Unlock()
+		},
+	}
+
+	partition := &model.Partition{
+		ID:     "part1",
+		Timers: []*model.Timer{timer},
+	}
+
+	tracker := &mockTracker{
+		getLastFirings: func(id string) ([]time.Time, error) {
+			// Mock that it fired (interval - 10ms) ago
+			return []time.Time{time.Now().Add(-200 * time.Millisecond).Add(10 * time.Millisecond)}, nil
+		},
+	}
+
+	m := NewManager(partition, tracker, &mockScheduleTracker{})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	m.StartTimers(ctx)
+
+	// Wait 50ms, which is > 10ms, to let the first catch-up fire happen
+	time.Sleep(50 * time.Millisecond)
+
+	mu.Lock()
+	count := callbackCount
+	mu.Unlock()
+
+	if count != 1 {
+		t.Errorf("Expected callback to be called exactly once during the 50ms wait due to resume, got %d", count)
 	}
 }

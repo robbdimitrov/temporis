@@ -9,7 +9,7 @@ func TestNewPartition(t *testing.T) {
 		{ID: "timer1"},
 	}
 	p := NewPartition("part1", timers)
-	
+
 	if p.ID != "part1" {
 		t.Errorf("expected part1, got %v", p.ID)
 	}
