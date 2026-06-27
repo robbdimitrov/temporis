@@ -33,10 +33,12 @@ func (s *ValkeyStore) Close() error {
 	return s.client.Close()
 }
 
+// HasFired checks whether a one-time timer has already been claimed.
+// Non-atomic: used only as a pre-check to skip the interval wait early.
 func (s *ValkeyStore) HasFired(ctx context.Context, timerID string) bool {
 	for i := 0; i < 3; i++ {
 		opCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		exists, err := s.client.Exists(opCtx, "firings:"+timerID).Result()
+		exists, err := s.client.Exists(opCtx, "fired:"+timerID).Result()
 		cancel()
 		if err == nil {
 			return exists == 1
@@ -48,15 +50,32 @@ func (s *ValkeyStore) HasFired(ctx context.Context, timerID string) bool {
 	return false
 }
 
+// ClaimFiring atomically claims the firing slot for a one-time timer (SET NX).
+// Returns true if this caller won the claim. Returns false on failure to avoid
+// firing without a confirmed claim.
+func (s *ValkeyStore) ClaimFiring(ctx context.Context, timerID string, t time.Time) bool {
+	for i := 0; i < 3; i++ {
+		opCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		claimed, err := s.client.SetNX(opCtx, "fired:"+timerID, t.UnixNano(), 0).Result()
+		cancel()
+		if err == nil {
+			return claimed
+		}
+		slog.Warn("Failed to claim firing", "timer_id", timerID, "attempt", i+1, "error", err)
+		time.Sleep(100 * time.Millisecond)
+	}
+	slog.Error("Failed to claim firing after retries, skipping execution", "timer_id", timerID)
+	return false
+}
+
+// RecordFiring appends a firing timestamp to the history list of a recurring
+// timer, keeping the last 10 entries.
 func (s *ValkeyStore) RecordFiring(ctx context.Context, timerID string, t time.Time) bool {
 	for i := 0; i < 3; i++ {
 		opCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		pipe := s.client.Pipeline()
-		// Add timestamp to firings list
 		pipe.LPush(opCtx, "firings:"+timerID, t.UnixNano())
-		// Keep only the last 10 entries
 		pipe.LTrim(opCtx, "firings:"+timerID, 0, 9)
-		
 		_, err := pipe.Exec(opCtx)
 		cancel()
 		if err == nil {
@@ -70,6 +89,7 @@ func (s *ValkeyStore) RecordFiring(ctx context.Context, timerID string, t time.T
 	return false
 }
 
+// GetLastFirings returns the last 10 firing times for a recurring timer.
 func (s *ValkeyStore) GetLastFirings(ctx context.Context, timerID string) ([]time.Time, error) {
 	opCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()

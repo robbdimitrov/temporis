@@ -16,8 +16,8 @@ firings.
   instant state syncing without polling bottlenecks.
 - **Persistent Configuration:** Stores partitions and timer definitions securely
   in PostgreSQL.
-- **Execution Tracking:** Logs timer firings to Valkey to prevent double
-  execution of one-time timers.
+- **Execution Tracking:** Logs timer firings to Valkey, keeping a rolling
+  history of the last 10 firings per timer.
 
 ## Architecture
 
@@ -70,7 +70,8 @@ The service is built as a Go microservice with the following components:
   partitions.
 - **Storage**:
   - **PostgreSQL**: Persists partition and timer configurations.
-  - **Valkey**: Logs timer firings for auditing or downstream processing.
+  - **Valkey**: Logs timer firings (last 10 per timer) for auditing or
+    downstream processing.
 - **Service Logic**: Orchestrates partition distribution, timer execution, and
   cluster synchronization.
 
@@ -97,9 +98,10 @@ the database pod starts for the very first time, it automatically executes this
 script to:
 
 1. Create the `partitions` and `timers` tables.
-2. Set up the `LISTEN/NOTIFY` triggers.
-3. Seed the database with sample partitions (`part1`, `part2`) and initial
-   timers.
+2. Set up `LISTEN/NOTIFY` triggers on both the `partitions` and `timers`
+   tables (channel: `config_changed`).
+3. Seed the database with sample partitions (`partition-1` through
+   `partition-6`) and 20 randomly assigned timers.
 
 You do not need to initialize the database manually.
 
@@ -115,7 +117,7 @@ You do not need to initialize the database manually.
   ```
 - Check Valkey for timer firing records:
   ```bash
-  valkey-cli -h <valkey-host> KEYS "firing:*"
+  valkey-cli -h <valkey-host> KEYS "firings:*"
   ```
 
 ## Usage
@@ -133,18 +135,20 @@ The service automatically:
 Insert new partitions or timers into PostgreSQL:
 
 ```sql
-INSERT INTO partitions (id) VALUES ('part3');
-INSERT INTO timers (partition_id, name, interval_ms, once) VALUES ('part3', 'timer3', 2000, false);
+INSERT INTO partitions (id) VALUES ('partition-7');
+INSERT INTO timers (partition_id, name, interval_ms, once) VALUES ('partition-7', 'timer-21', 2000, false);
 ```
 
-The service will instantly detect changes in real-time via PostgreSQL
-`LISTEN/NOTIFY`.
+The service will instantly detect the change via PostgreSQL `LISTEN/NOTIFY`
+(`config_changed` channel), which fires on both `partitions` and `timers`
+table mutations.
 
 ### Monitoring
 
 - **Logs**: Monitor pod logs for node joins/leaves, partition assignments, and
   errors.
-- **Valkey**: Inspect `firing:<timer-id>` keys for timer execution history.
+- **Valkey**: Inspect `firings:<timer-id>` lists for timer execution history
+  (stores the last 10 firing timestamps per timer).
 
 ## How It Works
 
@@ -192,7 +196,6 @@ The service will instantly detect changes in real-time via PostgreSQL
 - **Metrics**: Integrate Prometheus for monitoring node count, partition
   assignments, and timer firings.
 - **Health Checks**: Add HTTP endpoints for readiness and liveness probes.
-- **Retry Logic**: Implement retries for database connections and Valkey writes.
 
 ## Troubleshooting
 
@@ -203,7 +206,7 @@ The service will instantly detect changes in real-time via PostgreSQL
   - Ensure partitions exist in PostgreSQL.
   - Check logs for hash ring updates and errors.
 - **Timer Firings Missing**:
-  - Verify Valkey connectivity and inspect `firing:*` keys.
+  - Verify Valkey connectivity and inspect `firings:*` keys.
   - Confirm timer intervals are reasonable (e.g., not too short).
 
 ## Contributing

@@ -9,9 +9,14 @@ import (
 	"temporis/internal/model"
 )
 
-// ExecutionTracker defines how timer firings are recorded and checked.
+// ExecutionTracker records and checks timer firings.
 type ExecutionTracker interface {
+	// HasFired is a non-atomic pre-check; not the dedup gate.
 	HasFired(ctx context.Context, timerID string) bool
+	// ClaimFiring atomically claims the firing slot (SET NX).
+	// Returns true if this caller won the claim.
+	ClaimFiring(ctx context.Context, timerID string, t time.Time) bool
+	// RecordFiring appends a timestamp to a recurring timer's history.
 	RecordFiring(ctx context.Context, timerID string, t time.Time) bool
 }
 
@@ -59,9 +64,8 @@ func (m *Manager) StartTimers(ctx context.Context) {
 // startTimer executes a single timer's logic.
 func (m *Manager) startTimer(ctx context.Context, timer *model.Timer, logger *slog.Logger) {
 	if timer.Once {
-		// Check if timer has already fired
 		if m.tracker.HasFired(ctx, timer.ID) {
-			logger.Info("One-time timer has already fired, skipping")
+			logger.Info("One-time timer already claimed, skipping")
 			return
 		}
 		timerObj := time.NewTimer(timer.Interval)
@@ -69,9 +73,12 @@ func (m *Manager) startTimer(ctx context.Context, timer *model.Timer, logger *sl
 
 		select {
 		case <-timerObj.C:
+			if !m.tracker.ClaimFiring(ctx, timer.ID, time.Now()) {
+				logger.Info("One-time timer already claimed by another node, skipping")
+				return
+			}
 			logger.Info("Firing one-time timer")
 			timer.Callback()
-			m.tracker.RecordFiring(ctx, timer.ID, time.Now())
 		case <-ctx.Done():
 			logger.Info("Timer cancelled by context", "error", ctx.Err())
 			return
