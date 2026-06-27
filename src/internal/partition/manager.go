@@ -105,7 +105,7 @@ func (m *Manager) startTimer(ctx context.Context, timer *model.Timer, logger *sl
 	// Base jitter is 10% of the interval.
 	maxJitter := timer.Interval / 10
 
-	// Dynamically expand the jitter window for extremely heavy partitions 
+	// Dynamically expand the jitter window for extremely heavy partitions
 	// Cap the total spread at 1 hour to maintain an acceptable recovery SLA.
 	volumeJitter := time.Duration(len(m.Partition.Timers)) * 2 * time.Millisecond
 	if volumeJitter > time.Hour {
@@ -130,7 +130,7 @@ func (m *Manager) startTimer(ctx context.Context, timer *model.Timer, logger *sl
 
 		var jitter time.Duration
 		if maxJitter > 0 {
-			// Deterministic Hashing: consistently assign the same timer to the same 
+			// Deterministic Hashing: consistently assign the same timer to the same
 			// bucket across restarts, avoiding random double-penalty delays.
 			h := fnv.New32a()
 			h.Write([]byte(timer.ID))

@@ -22,6 +22,7 @@ type Service struct {
 	partitions  map[string]*partition.Manager
 	cancelFuncs map[string]context.CancelFunc
 	mu          sync.Mutex
+	wg          sync.WaitGroup
 }
 
 func NewService(cfg *config.Config, pgStore *storage.PostgresStore, valkeyStore *storage.ValkeyStore, gossipMgr *gossip.GossipManager) (*Service, error) {
@@ -68,6 +69,9 @@ func (s *Service) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
+			slog.Info("Service context cancelled, waiting for partitions to drain...")
+			s.wg.Wait()
+			slog.Info("All partitions drained cleanly.")
 			return nil
 		case <-ticker.C:
 			triggerSync()
@@ -135,7 +139,11 @@ func (s *Service) syncWithCluster(ctx context.Context) {
 			s.partitions[id] = mgr
 			s.cancelFuncs[id] = cancel
 			slog.Info("Launching StartTimers for partition", "partition_id", id, "timer_count", len(mgr.Partition.Timers))
-			go mgr.StartTimers(partitionCtx)
+			s.wg.Add(1)
+			go func(m *partition.Manager, pCtx context.Context) {
+				defer s.wg.Done()
+				m.StartTimers(pCtx)
+			}(mgr, partitionCtx)
 		} else {
 			slog.Info("Partition already running", "partition_id", id, "timer_count", len(mgr.Partition.Timers))
 		}

@@ -53,7 +53,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		slog.Info("Starting service...")
 		if err := svc.Run(ctx); err != nil {
 			slog.Error("Service error", "error", err)
@@ -63,5 +65,10 @@ func main() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	<-sigCh
-	slog.Info("Shutting down...")
+	slog.Info("Shutting down... sending cancel to service")
+	cancel()
+
+	// Wait for the service to drain all running partition timers
+	<-done
+	slog.Info("Service stopped gracefully, closing database connections...")
 }

@@ -275,3 +275,48 @@ func TestManager_StartTimers_Recurring_Resume(t *testing.T) {
 		t.Errorf("Expected callback to be called exactly once during the 50ms wait due to resume, got %d", count)
 	}
 }
+
+func TestManager_StartTimers_Recurring_CatchUp(t *testing.T) {
+	var mu sync.Mutex
+	callbackCount := 0
+
+	timer := &model.Timer{
+		ID:       "timer1",
+		Interval: 200 * time.Millisecond,
+		Once:     false,
+		Callback: func() {
+			mu.Lock()
+			callbackCount++
+			mu.Unlock()
+		},
+	}
+
+	partition := &model.Partition{
+		ID:     "part1",
+		Timers: []*model.Timer{timer},
+	}
+
+	tracker := &mockTracker{
+		getLastFirings: func(id string) ([]time.Time, error) {
+			// Mock that it fired 2 intervals ago (400ms). It's very past due.
+			return []time.Time{time.Now().Add(-400 * time.Millisecond)}, nil
+		},
+	}
+
+	m := NewManager(partition, tracker, &mockScheduleTracker{})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	m.StartTimers(ctx)
+
+	// Jitter is max 10ms. It should catch up immediately (within 10ms).
+	time.Sleep(50 * time.Millisecond)
+
+	mu.Lock()
+	count := callbackCount
+	mu.Unlock()
+
+	if count != 1 {
+		t.Errorf("Expected callback to be called exactly once to catch up, got %d", count)
+	}
+}
