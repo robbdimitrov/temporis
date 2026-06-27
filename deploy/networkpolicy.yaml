@@ -27,7 +27,19 @@ spec:
     ports:
     - protocol: TCP
       port: 7946
+    - protocol: UDP
+      port: 7946
   egress:
+  # Allow temporis pods to gossip with each other
+  - to:
+    - podSelector:
+        matchLabels:
+          app: temporis
+    ports:
+    - protocol: TCP
+      port: 7946
+    - protocol: UDP
+      port: 7946
   # Allow DNS resolution
   - ports:
     - protocol: UDP

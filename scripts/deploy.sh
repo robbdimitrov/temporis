@@ -3,8 +3,9 @@ set -e
 
 echo "Deploying Temporis..."
 
-echo "1. Building Docker image..."
-cd src && docker build -t temporis:1.0.2 . && cd ..
+echo "1. Building and pushing Docker image to local registry..."
+cd src && docker build -t localhost:5000/temporis:latest . && cd ..
+docker push localhost:5000/temporis:latest
 
 echo "2. Generating Postgres Init ConfigMap..."
 kubectl create configmap postgres-init-script --from-file=pkg/database/schema.sql -o yaml --dry-run=client | kubectl apply -f -
@@ -12,7 +13,7 @@ kubectl create configmap postgres-init-script --from-file=pkg/database/schema.sq
 echo "3. Applying Kubernetes manifests..."
 kubectl apply -f deploy/
 
-echo "4. Restarting Temporis deployment (if exists)..."
-kubectl rollout restart deployment temporis || true
+echo "4. Restarting Temporis deployment..."
+kubectl rollout restart deployment temporis
 
 echo "Deployment complete."
