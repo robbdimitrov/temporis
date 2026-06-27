@@ -90,7 +90,7 @@ func TestManager_StartTimers_Once(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m.StartTimers(ctx)
+	go m.StartTimers(ctx)
 
 	time.Sleep(50 * time.Millisecond)
 
@@ -129,7 +129,7 @@ func TestManager_StartTimers_AlreadyFired(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m.StartTimers(ctx)
+	go m.StartTimers(ctx)
 
 	time.Sleep(30 * time.Millisecond)
 
@@ -165,7 +165,7 @@ func TestManager_StartTimers_Recurring(t *testing.T) {
 	m := NewManager(partition, tracker, &mockScheduleTracker{})
 	ctx, cancel := context.WithCancel(context.Background())
 
-	m.StartTimers(ctx)
+	go m.StartTimers(ctx)
 
 	time.Sleep(35 * time.Millisecond)
 	cancel()
@@ -218,7 +218,7 @@ func TestManager_StartTimers_Once_MidInterval(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m.StartTimers(ctx)
+	go m.StartTimers(ctx)
 
 	// Wait a bit more than the remaining 10ms, but much less than 1 hour.
 	time.Sleep(50 * time.Millisecond)
@@ -262,7 +262,7 @@ func TestManager_StartTimers_Recurring_Resume(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m.StartTimers(ctx)
+	go m.StartTimers(ctx)
 
 	// Wait 50ms, which is > 10ms, to let the first catch-up fire happen
 	time.Sleep(50 * time.Millisecond)
@@ -307,7 +307,7 @@ func TestManager_StartTimers_Recurring_CatchUp(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m.StartTimers(ctx)
+	go m.StartTimers(ctx)
 
 	// Jitter is max 10ms. It should catch up immediately (within 10ms).
 	time.Sleep(50 * time.Millisecond)
