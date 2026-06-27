@@ -74,7 +74,7 @@ The service is built as a Go microservice with the following components:
    ```
 
 ### How the Database is Initialized
-During deployment, `scripts/deploy.sh` automatically packages `pkg/database/script.sql` into a Kubernetes `ConfigMap`. The PostgreSQL `StatefulSet` mounts this map directly into `/docker-entrypoint-initdb.d/`. When the database pod starts for the very first time, it automatically executes this script to:
+During deployment, `scripts/deploy.sh` automatically packages `pkg/database/schema.sql` into a Kubernetes `ConfigMap`. The PostgreSQL `StatefulSet` mounts this map directly into `/docker-entrypoint-initdb.d/`. When the database pod starts for the very first time, it automatically executes this script to:
 1. Create the `partitions` and `timers` tables.
 2. Set up the `LISTEN/NOTIFY` triggers.
 3. Seed the database with sample partitions (`part1`, `part2`) and initial timers.
