@@ -56,5 +56,5 @@ metadata:
   name: timer-secret
 type: Opaque
 stringData:
-  postgres-url: "postgres://postgres:securepassword123@postgres:5432/timers?sslmode=disable"
+  postgres-url: "postgres://postgres:securepassword123@postgres:5432/temporis?sslmode=disable"
   valkey-url: "redis://:securevalkey123@valkey:6379"

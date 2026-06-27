@@ -17,7 +17,7 @@ func Load() (*Config, error) {
 	return &Config{
 		ServiceName: getEnv("SERVICE_NAME", "temporis"),
 		GossipPort:  parseInt(getEnv("GOSSIP_PORT", "7946")),
-		PostgresURL: getEnv("POSTGRES_URL", "postgres://postgres:password@localhost:5432/timers?sslmode=disable"),
+		PostgresURL: getEnv("POSTGRES_URL", "postgres://postgres:password@localhost:5432/temporis?sslmode=disable"),
 		ValkeyURL:   getEnv("VALKEY_URL", "redis://localhost:6379"),
 		SeedNode:    getEnv("SEED_NODE", "localhost:7946"),
 	}, nil

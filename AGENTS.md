@@ -31,7 +31,7 @@ Temporis is a distributed microservice written in Go designed to manage timers a
 - Keep related fixes together; do not expand a task into unrelated cleanup.
 - Comments explain constraints, invariants, security decisions, or non-obvious intent. Do not narrate straightforward code or preserve implementation history.
 - Handle database and Valkey connectivity robustly (retries, timeouts).
-- The database name is `timers`, and configurations related to it (e.g., config maps) generally follow the `timer-*` naming, while the core service is named `temporis`.
+- The database name is `temporis`, and configurations related to it (e.g., config maps) generally follow the `timer-*` naming, while the core service is named `temporis`.
 - Ensure proper logging using standard `log` package (or upgraded logger if introduced) to trace partition assignments and timer executions.
 
 ## Secure Engineering

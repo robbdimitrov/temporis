@@ -1,3 +1,6 @@
+CREATE DATABASE temporis;
+
+\c temporis
 
 CREATE TABLE partitions (
     id VARCHAR(255) PRIMARY KEY

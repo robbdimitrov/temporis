@@ -27,7 +27,7 @@ func TestLoad(t *testing.T) {
 		t.Errorf("expected redis://test:6379, got %v", cfg.ValkeyURL)
 	}
 	// Fallback test
-	if cfg.PostgresURL != "postgres://postgres:password@localhost:5432/timers?sslmode=disable" {
+	if cfg.PostgresURL != "postgres://postgres:password@localhost:5432/temporis?sslmode=disable" {
 		t.Errorf("expected default postgres url, got %v", cfg.PostgresURL)
 	}
 }

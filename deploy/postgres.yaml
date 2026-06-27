@@ -59,6 +59,6 @@ metadata:
     app: postgres
 type: Opaque
 stringData:
-  POSTGRES_DB: timers
+  POSTGRES_DB: postgres
   POSTGRES_USER: postgres
   POSTGRES_PASSWORD: securepassword123
