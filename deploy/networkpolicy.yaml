@@ -5,7 +5,7 @@ metadata:
 spec:
   podSelector: {}
   policyTypes:
-  - Ingress
+    - Ingress
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -16,51 +16,51 @@ spec:
     matchLabels:
       app: temporis
   policyTypes:
-  - Ingress
-  - Egress
+    - Ingress
+    - Egress
   ingress:
-  # Allow temporis pods to communicate with each other on gossip port 7946
-  - from:
-    - podSelector:
-        matchLabels:
-          app: temporis
-    ports:
-    - protocol: TCP
-      port: 7946
-    - protocol: UDP
-      port: 7946
+    # Allow temporis pods to communicate with each other on gossip port 7946
+    - from:
+        - podSelector:
+            matchLabels:
+              app: temporis
+      ports:
+        - protocol: TCP
+          port: 7946
+        - protocol: UDP
+          port: 7946
   egress:
-  # Allow temporis pods to gossip with each other
-  - to:
-    - podSelector:
-        matchLabels:
-          app: temporis
-    ports:
-    - protocol: TCP
-      port: 7946
-    - protocol: UDP
-      port: 7946
-  # Allow DNS resolution
-  - ports:
-    - protocol: UDP
-      port: 53
-    - protocol: TCP
-      port: 53
-  # Allow egress to Postgres and Valkey
-  - to:
-    - podSelector:
-        matchLabels:
-          app: postgres
-    ports:
-    - protocol: TCP
-      port: 5432
-  - to:
-    - podSelector:
-        matchLabels:
-          app: valkey
-    ports:
-    - protocol: TCP
-      port: 6379
+    # Allow temporis pods to gossip with each other
+    - to:
+        - podSelector:
+            matchLabels:
+              app: temporis
+      ports:
+        - protocol: TCP
+          port: 7946
+        - protocol: UDP
+          port: 7946
+    # Allow DNS resolution
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Allow egress to Postgres and Valkey
+    - to:
+        - podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - podSelector:
+            matchLabels:
+              app: valkey
+      ports:
+        - protocol: TCP
+          port: 6379
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -69,23 +69,23 @@ metadata:
 spec:
   podSelector:
     matchExpressions:
-      - {key: app, operator: In, values: [postgres, valkey]}
+      - { key: app, operator: In, values: [postgres, valkey] }
   policyTypes:
-  - Ingress
+    - Ingress
   ingress:
-  # Allow ingress to Postgres only from Temporis
-  - from:
-    - podSelector:
-        matchLabels:
-          app: temporis
-    ports:
-    - protocol: TCP
-      port: 5432
-  # Allow ingress to Valkey only from Temporis
-  - from:
-    - podSelector:
-        matchLabels:
-          app: temporis
-    ports:
-    - protocol: TCP
-      port: 6379
+    # Allow ingress to Postgres only from Temporis
+    - from:
+        - podSelector:
+            matchLabels:
+              app: temporis
+      ports:
+        - protocol: TCP
+          port: 5432
+    # Allow ingress to Valkey only from Temporis
+    - from:
+        - podSelector:
+            matchLabels:
+              app: temporis
+      ports:
+        - protocol: TCP
+          port: 6379
