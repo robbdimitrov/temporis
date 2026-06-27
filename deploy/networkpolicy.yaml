@@ -1,0 +1,79 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: temporis-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: temporis
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow temporis pods to communicate with each other on gossip port 7946
+  - from:
+    - podSelector:
+        matchLabels:
+          app: temporis
+    ports:
+    - protocol: TCP
+      port: 7946
+  egress:
+  # Allow DNS resolution
+  - ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  # Allow egress to Postgres and Valkey
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgres
+    ports:
+    - protocol: TCP
+      port: 5432
+  - to:
+    - podSelector:
+        matchLabels:
+          app: valkey
+    ports:
+    - protocol: TCP
+      port: 6379
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: datastore-policy
+spec:
+  podSelector:
+    matchExpressions:
+      - {key: app, operator: In, values: [postgres, valkey]}
+  policyTypes:
+  - Ingress
+  ingress:
+  # Allow ingress to Postgres only from Temporis
+  - from:
+    - podSelector:
+        matchLabels:
+          app: temporis
+    ports:
+    - protocol: TCP
+      port: 5432
+  # Allow ingress to Valkey only from Temporis
+  - from:
+    - podSelector:
+        matchLabels:
+          app: temporis
+    ports:
+    - protocol: TCP
+      port: 6379
