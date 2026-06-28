@@ -10,13 +10,13 @@ import (
 	"temporis/internal/gossip"
 	"temporis/internal/hash"
 	"temporis/internal/partition"
-	"temporis/internal/storage"
+	"temporis/internal/store"
 )
 
 type Service struct {
 	cfg         *config.Config
-	database    *storage.DatabaseStore
-	cache       *storage.CacheStore
+	database    *store.DatabaseStore
+	cache       *store.CacheStore
 	gossipMgr   *gossip.GossipManager
 	hashRing    *hash.ConsistentHash
 	partitions  map[string]*partition.Manager
@@ -25,7 +25,7 @@ type Service struct {
 	wg          sync.WaitGroup
 }
 
-func NewService(cfg *config.Config, database *storage.DatabaseStore, cache *storage.CacheStore, gossipMgr *gossip.GossipManager) (*Service, error) {
+func NewService(cfg *config.Config, database *store.DatabaseStore, cache *store.CacheStore, gossipMgr *gossip.GossipManager) (*Service, error) {
 	hashRing := hash.NewConsistentHash(100)
 	return &Service{
 		cfg:         cfg,

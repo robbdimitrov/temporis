@@ -12,7 +12,7 @@ import (
 	"temporis/internal/config"
 	"temporis/internal/gossip"
 	"temporis/internal/service"
-	"temporis/internal/storage"
+	"temporis/internal/store"
 )
 
 func main() {
@@ -28,14 +28,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	database, err := storage.NewDatabaseStore(cfg.DatabaseURL)
+	database, err := store.NewDatabaseStore(cfg.DatabaseURL)
 	if err != nil {
 		slog.Error("Failed to init database", "error", err)
 		os.Exit(1)
 	}
 	defer database.Close()
 
-	cache, err := storage.NewCacheStore(cfg.CacheURL)
+	cache, err := store.NewCacheStore(cfg.CacheURL)
 	if err != nil {
 		slog.Error("Failed to init cache", "error", err)
 		os.Exit(1)
