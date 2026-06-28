@@ -56,10 +56,20 @@ func (gm *GossipManager) Members() []string {
 	return nodes
 }
 
-func (gm *GossipManager) Shutdown() {
-	if err := gm.list.Leave(0); err != nil {
-		slog.Error("Failed to leave gossip", "error", err)
+// Leave broadcasts a graceful departure to cluster peers and waits up to
+// timeout for propagation. Call this before cancel()ing the service context
+// so peers update their membership view immediately rather than waiting for
+// the dead-detection window (~15–30 s with default memberlist settings).
+func (gm *GossipManager) Leave(timeout time.Duration) {
+	slog.Info("Leaving gossip cluster", "timeout", timeout)
+	if err := gm.list.Leave(timeout); err != nil {
+		slog.Error("Failed to leave gossip cluster", "error", err)
 	}
+}
+
+// Shutdown performs the TCP-level teardown. Leave should be called first on
+// graceful shutdown.
+func (gm *GossipManager) Shutdown() {
 	if err := gm.list.Shutdown(); err != nil {
 		slog.Error("Failed to shutdown gossip", "error", err)
 	}

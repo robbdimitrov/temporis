@@ -20,7 +20,7 @@ firings.
   history of the last 10 firings per timer.
 - **Delivery Guarantee:** Provides at-most-once delivery for one-time timers.
   Partition rebalances seamlessly resume countdowns without resetting intervals.
-- **Thundering Herd Protection:** Employs deterministic hashing and volume-based 
+- **Thundering Herd Protection:** Employs deterministic hashing and volume-based
   SLA jitter (1-minute buckets, up to 1-hour spread) to perfectly balance massive
   catch-up executions during recovery without thrashing the database connection pool.
 
@@ -195,12 +195,6 @@ table mutations.
   `gossip.NewGossipManager`.
 - Add debug logs in `service.syncWithCluster` to track node and partition
   changes.
-
-### Enhancements
-
-- **Metrics**: Integrate Prometheus for monitoring node count, partition
-  assignments, and timer firings.
-- **Health Checks**: Add HTTP endpoints for readiness and liveness probes.
 
 ## Troubleshooting
 

@@ -106,6 +106,10 @@ func main() {
 	case <-serviceErrCh:
 		slog.Info("Service failed, shutting down...")
 	}
+
+	// Broadcast departure before stopping timers so surviving nodes can
+	// immediately re-home the partitions this pod owns.
+	gossipMgr.Leave(3 * time.Second)
 	cancel()
 
 	// Shut down probe server
