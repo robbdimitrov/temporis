@@ -18,11 +18,20 @@ type ExecutionTracker interface {
 	// ClaimFiring atomically claims the firing slot (SET NX).
 	// Returns true if this caller won the claim.
 	ClaimFiring(ctx context.Context, timerID string, t time.Time) bool
-	// RecordFiring appends a timestamp to a recurring timer's history.
-	RecordFiring(ctx context.Context, timerID string, t time.Time) bool
+	// ClaimRecurringFiring atomically fences execution and records the scheduled
+	// recurring fire time before the callback runs.
+	ClaimRecurringFiring(ctx context.Context, timerID string, scheduledAt time.Time, lockTTL time.Duration) int
+	// ReleaseRecurringFiring releases the execution fence after a recurring callback returns.
+	ReleaseRecurringFiring(ctx context.Context, timerID string, scheduledAt time.Time) bool
 	// GetLastFirings returns the recent firing history for a recurring timer.
 	GetLastFirings(ctx context.Context, timerID string) ([]time.Time, error)
 }
+
+const (
+	RecurringAlreadyClaimed = iota
+	RecurringClaimed
+	RecurringBusy
+)
 
 // ScheduleTracker persists the first pick-up timestamp for once-timers so that
 // the target fire time is stable across partition rebalances.
@@ -189,14 +198,72 @@ func (m *Manager) startTimer(ctx context.Context, timer *model.Timer, logger *sl
 			return
 		}
 
-		logger.Info("Firing recurring timer")
-		timer.Callback()
-		m.tracker.RecordFiring(ctx, timer.ID, time.Now())
+		claimCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		status := m.tracker.ClaimRecurringFiring(claimCtx, timer.ID, nextFire, recurringLockTTL(timer.Interval))
+		cancel()
+
+		switch status {
+		case RecurringClaimed:
+			logger.Info("Firing recurring timer")
+			timer.Callback()
+
+			releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			if !m.tracker.ReleaseRecurringFiring(releaseCtx, timer.ID, nextFire) {
+				logger.Warn("Failed to release recurring timer execution fence")
+			}
+			cancel()
+		case RecurringBusy:
+			logger.Info("Recurring timer is still executing elsewhere, retrying", "scheduled_at", nextFire)
+			if !sleepWithContext(ctx, recurringRetryDelay(timer.Interval)) {
+				logger.Info("Timer cancelled by context while waiting for execution fence", "error", ctx.Err())
+				return
+			}
+			continue
+		case RecurringAlreadyClaimed:
+			logger.Info("Recurring timer fire already claimed by another node", "scheduled_at", nextFire)
+		default:
+			logger.Warn("Unknown recurring claim status, retrying", "status", status)
+			if !sleepWithContext(ctx, recurringRetryDelay(timer.Interval)) {
+				logger.Info("Timer cancelled by context while waiting to retry claim", "error", ctx.Err())
+				return
+			}
+			continue
+		}
 
 		// Align to the next future multiple of the interval to prevent rapid-fire cascades
 		now := time.Now()
 		for !nextFire.After(now) {
 			nextFire = nextFire.Add(timer.Interval)
 		}
+	}
+}
+
+func recurringLockTTL(interval time.Duration) time.Duration {
+	ttl := 2 * interval
+	if ttl < time.Minute {
+		return time.Minute
+	}
+	return ttl
+}
+
+func recurringRetryDelay(interval time.Duration) time.Duration {
+	delay := interval / 10
+	if delay < 100*time.Millisecond {
+		return 100 * time.Millisecond
+	}
+	if delay > time.Second {
+		return time.Second
+	}
+	return delay
+}
+
+func sleepWithContext(ctx context.Context, delay time.Duration) bool {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return true
+	case <-ctx.Done():
+		return false
 	}
 }

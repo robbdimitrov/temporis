@@ -68,24 +68,77 @@ func (s *CacheStore) ClaimFiring(ctx context.Context, timerID string, t time.Tim
 	return false
 }
 
-// RecordFiring appends a firing timestamp to the history list of a recurring
-// timer, keeping the last 10 entries.
-func (s *CacheStore) RecordFiring(ctx context.Context, timerID string, t time.Time) bool {
+// ClaimRecurringFiring fences a recurring timer callback and records the
+// scheduled fire time before execution. Return values match partition's
+// Recurring* constants without importing that package.
+func (s *CacheStore) ClaimRecurringFiring(ctx context.Context, timerID string, scheduledAt time.Time, lockTTL time.Duration) int {
+	const (
+		recurringClaimed = 1
+		recurringBusy    = 2
+	)
+
+	if lockTTL <= 0 {
+		lockTTL = time.Minute
+	}
+
+	runningKey := "recurring:running:" + timerID
+	claimKey := recurringClaimKey(timerID, scheduledAt)
+	firingsKey := "firings:" + timerID
+	lockValue := strconv.FormatInt(scheduledAt.UnixNano(), 10)
+	scheduledNano := strconv.FormatInt(scheduledAt.UnixNano(), 10)
+
+	script := `
+if redis.call("EXISTS", KEYS[1]) == 1 then
+	return 2
+end
+if redis.call("EXISTS", KEYS[2]) == 1 then
+	return 0
+end
+redis.call("SET", KEYS[1], ARGV[1], "PX", ARGV[2])
+redis.call("SET", KEYS[2], ARGV[1])
+redis.call("LPUSH", KEYS[3], ARGV[3])
+redis.call("LTRIM", KEYS[3], 0, 9)
+return 1
+`
+
 	for i := 0; i < 3; i++ {
 		opCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		pipe := s.client.Pipeline()
-		pipe.LPush(opCtx, "firings:"+timerID, t.UnixNano())
-		pipe.LTrim(opCtx, "firings:"+timerID, 0, 9)
-		_, err := pipe.Exec(opCtx)
+		result, err := s.client.Eval(opCtx, script, []string{runningKey, claimKey, firingsKey}, lockValue, lockTTL.Milliseconds(), scheduledNano).Int()
 		cancel()
 		if err == nil {
-			slog.Info("Recorded firing", "timer_id", timerID, "time", t)
-			return true
+			if result == recurringClaimed {
+				slog.Info("Claimed recurring firing", "timer_id", timerID, "scheduled_at", scheduledAt)
+			}
+			return result
 		}
-		slog.Warn("Failed to record firing", "timer_id", timerID, "attempt", i+1, "error", err)
+		slog.Warn("Failed to claim recurring firing", "timer_id", timerID, "attempt", i+1, "error", err)
 		time.Sleep(100 * time.Millisecond)
 	}
-	slog.Error("Failed to record firing after retries", "timer_id", timerID)
+	slog.Error("Failed to claim recurring firing after retries", "timer_id", timerID)
+	return recurringBusy
+}
+
+func (s *CacheStore) ReleaseRecurringFiring(ctx context.Context, timerID string, scheduledAt time.Time) bool {
+	runningKey := "recurring:running:" + timerID
+	lockValue := strconv.FormatInt(scheduledAt.UnixNano(), 10)
+	script := `
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+	return redis.call("DEL", KEYS[1])
+end
+return 0
+`
+
+	for i := 0; i < 3; i++ {
+		opCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		released, err := s.client.Eval(opCtx, script, []string{runningKey}, lockValue).Int()
+		cancel()
+		if err == nil {
+			return released == 1
+		}
+		slog.Warn("Failed to release recurring firing", "timer_id", timerID, "attempt", i+1, "error", err)
+		time.Sleep(100 * time.Millisecond)
+	}
+	slog.Error("Failed to release recurring firing after retries", "timer_id", timerID)
 	return false
 }
 
@@ -109,4 +162,8 @@ func (s *CacheStore) GetLastFirings(ctx context.Context, timerID string) ([]time
 	}
 	slog.Info("Retrieved firings", "timer_id", timerID, "count", len(firings))
 	return firings, nil
+}
+
+func recurringClaimKey(timerID string, scheduledAt time.Time) string {
+	return "recurring:claimed:" + timerID + ":" + strconv.FormatInt(scheduledAt.UnixNano(), 10)
 }

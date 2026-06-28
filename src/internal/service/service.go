@@ -3,46 +3,58 @@ package service
 import (
 	"context"
 	"log/slog"
+	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"temporis/internal/config"
 	"temporis/internal/gossip"
 	"temporis/internal/hash"
+	"temporis/internal/model"
 	"temporis/internal/partition"
 	"temporis/internal/store"
 )
 
 type Service struct {
-	cfg         *config.Config
-	database    *store.DatabaseStore
-	cache       *store.CacheStore
-	gossipMgr   *gossip.GossipManager
-	hashRing    *hash.ConsistentHash
-	partitions  map[string]*partition.Manager
-	cancelFuncs map[string]context.CancelFunc
-	mu          sync.Mutex
-	wg          sync.WaitGroup
+	cfg        *config.Config
+	database   *store.DatabaseStore
+	cache      *store.CacheStore
+	gossipMgr  *gossip.GossipManager
+	hashRing   *hash.ConsistentHash
+	partitions map[string]*partitionRunner
+	ready      atomic.Bool
+	mu         sync.Mutex
+	wg         sync.WaitGroup
+}
+
+type partitionRunner struct {
+	manager *partition.Manager
+	cancel  context.CancelFunc
+	done    chan struct{}
 }
 
 func NewService(cfg *config.Config, database *store.DatabaseStore, cache *store.CacheStore, gossipMgr *gossip.GossipManager) (*Service, error) {
 	hashRing := hash.NewConsistentHash(100)
 	return &Service{
-		cfg:         cfg,
-		database:    database,
-		cache:       cache,
-		gossipMgr:   gossipMgr,
-		hashRing:    hashRing,
-		partitions:  make(map[string]*partition.Manager),
-		cancelFuncs: make(map[string]context.CancelFunc),
+		cfg:        cfg,
+		database:   database,
+		cache:      cache,
+		gossipMgr:  gossipMgr,
+		hashRing:   hashRing,
+		partitions: make(map[string]*partitionRunner),
 	}, nil
+}
+
+func (s *Service) Ready() bool {
+	return s.ready.Load()
 }
 
 func (s *Service) Run(ctx context.Context) error {
 	// Join gossip cluster with seed nodes
 	seedNodes := []string{s.cfg.SeedNode}
 	if err := s.gossipMgr.Join(seedNodes); err != nil {
-		slog.Error("Failed to join gossip", "error", err)
+		slog.Warn("Failed to join gossip, continuing as a single node", "error", err)
 	}
 
 	syncChan := make(chan struct{}, 1)
@@ -70,18 +82,20 @@ func (s *Service) Run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			slog.Info("Service context cancelled, waiting for partitions to drain...")
+			s.ready.Store(false)
+			s.stopAllPartitions()
 			s.wg.Wait()
 			slog.Info("All partitions drained cleanly.")
 			return nil
 		case <-ticker.C:
 			triggerSync()
 		case <-syncChan:
-			s.syncWithCluster(ctx)
+			s.ready.Store(s.syncWithCluster(ctx))
 		}
 	}
 }
 
-func (s *Service) syncWithCluster(ctx context.Context) {
+func (s *Service) syncWithCluster(ctx context.Context) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -105,7 +119,7 @@ func (s *Service) syncWithCluster(ctx context.Context) {
 	partitions, err := s.database.GetPartitions(ctx)
 	if err != nil {
 		slog.Error("Failed to load partitions", "error", err)
-		return
+		return false
 	}
 	slog.Info("Partitions loaded from DB", "count", len(partitions))
 
@@ -121,31 +135,98 @@ func (s *Service) syncWithCluster(ctx context.Context) {
 	}
 
 	// Step 6: Stop partitions this pod no longer owns
-	for id, cancel := range s.cancelFuncs {
+	for id, runner := range s.partitions {
 		if _, exists := newPartitions[id]; !exists {
 			slog.Info("Stopping partition", "partition_id", id)
-			cancel() // Cancel the context to stop timers
-			delete(s.partitions, id)
-			delete(s.cancelFuncs, id)
+			s.stopPartition(id, runner)
 		}
 	}
 
 	slog.Info("Starting new partitions", "count", len(newPartitions))
 	// Step 7: Start new partitions assigned to this pod
 	for id, mgr := range newPartitions {
-		if _, exists := s.partitions[id]; !exists {
-			// Create a new context for the partition
-			partitionCtx, cancel := context.WithCancel(ctx)
-			s.partitions[id] = mgr
-			s.cancelFuncs[id] = cancel
-			slog.Info("Launching StartTimers for partition", "partition_id", id, "timer_count", len(mgr.Partition.Timers))
-			s.wg.Add(1)
-			go func(m *partition.Manager, pCtx context.Context) {
-				defer s.wg.Done()
-				m.StartTimers(pCtx)
-			}(mgr, partitionCtx)
-		} else {
-			slog.Info("Partition already running", "partition_id", id, "timer_count", len(mgr.Partition.Timers))
+		if runner, exists := s.partitions[id]; exists {
+			if partitionsEqual(runner.manager.Partition, mgr.Partition) {
+				slog.Info("Partition already running", "partition_id", id, "timer_count", len(mgr.Partition.Timers))
+				continue
+			}
+			slog.Info("Restarting partition with updated timer configuration", "partition_id", id)
+			s.stopPartition(id, runner)
+		}
+		s.startPartition(ctx, id, mgr)
+	}
+
+	return true
+}
+
+func (s *Service) startPartition(ctx context.Context, id string, mgr *partition.Manager) {
+	partitionCtx, cancel := context.WithCancel(ctx)
+	runner := &partitionRunner{
+		manager: mgr,
+		cancel:  cancel,
+		done:    make(chan struct{}),
+	}
+	s.partitions[id] = runner
+	slog.Info("Launching StartTimers for partition", "partition_id", id, "timer_count", len(mgr.Partition.Timers))
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		defer close(runner.done)
+		mgr.StartTimers(partitionCtx)
+	}()
+}
+
+func (s *Service) stopPartition(id string, runner *partitionRunner) {
+	runner.cancel()
+	<-runner.done
+	delete(s.partitions, id)
+}
+
+func (s *Service) stopAllPartitions() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for id, runner := range s.partitions {
+		slog.Info("Stopping partition", "partition_id", id)
+		s.stopPartition(id, runner)
+	}
+}
+
+func partitionsEqual(a, b *model.Partition) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	if a.ID != b.ID || len(a.Timers) != len(b.Timers) {
+		return false
+	}
+
+	aTimers := sortedTimers(a.Timers)
+	bTimers := sortedTimers(b.Timers)
+	for i := range aTimers {
+		if !timersEqual(aTimers[i], bTimers[i]) {
+			return false
 		}
 	}
+	return true
+}
+
+func sortedTimers(timers []*model.Timer) []*model.Timer {
+	sorted := append([]*model.Timer(nil), timers...)
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i] == nil || sorted[j] == nil {
+			return sorted[j] != nil
+		}
+		return sorted[i].ID < sorted[j].ID
+	})
+	return sorted
+}
+
+func timersEqual(a, b *model.Timer) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.ID == b.ID &&
+		a.Partition == b.Partition &&
+		a.Interval == b.Interval &&
+		a.Once == b.Once
 }

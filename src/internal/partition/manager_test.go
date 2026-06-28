@@ -10,10 +10,11 @@ import (
 )
 
 type mockTracker struct {
-	hasFired       func(id string) bool
-	claimFiring    func(id string, t time.Time) bool
-	recordFiring   func(id string, t time.Time) bool
-	getLastFirings func(id string) ([]time.Time, error)
+	hasFired               func(id string) bool
+	claimFiring            func(id string, t time.Time) bool
+	claimRecurringFiring   func(id string, scheduledAt time.Time, lockTTL time.Duration) int
+	releaseRecurringFiring func(id string, scheduledAt time.Time) bool
+	getLastFirings         func(id string) ([]time.Time, error)
 }
 
 func (m *mockTracker) HasFired(ctx context.Context, timerID string) bool {
@@ -30,9 +31,16 @@ func (m *mockTracker) ClaimFiring(ctx context.Context, timerID string, t time.Ti
 	return true
 }
 
-func (m *mockTracker) RecordFiring(ctx context.Context, timerID string, t time.Time) bool {
-	if m.recordFiring != nil {
-		return m.recordFiring(timerID, t)
+func (m *mockTracker) ClaimRecurringFiring(ctx context.Context, timerID string, scheduledAt time.Time, lockTTL time.Duration) int {
+	if m.claimRecurringFiring != nil {
+		return m.claimRecurringFiring(timerID, scheduledAt, lockTTL)
+	}
+	return RecurringClaimed
+}
+
+func (m *mockTracker) ReleaseRecurringFiring(ctx context.Context, timerID string, scheduledAt time.Time) bool {
+	if m.releaseRecurringFiring != nil {
+		return m.releaseRecurringFiring(timerID, scheduledAt)
 	}
 	return true
 }
@@ -318,5 +326,94 @@ func TestManager_StartTimers_Recurring_CatchUp(t *testing.T) {
 
 	if count != 1 {
 		t.Errorf("Expected callback to be called exactly once to catch up, got %d", count)
+	}
+}
+
+func TestManager_StartTimers_Recurring_BusyFenceRetries(t *testing.T) {
+	var mu sync.Mutex
+	callbackCount := 0
+	claimCount := 0
+
+	timer := &model.Timer{
+		ID:       "timer1",
+		Interval: 10 * time.Millisecond,
+		Once:     false,
+		Callback: func() {
+			mu.Lock()
+			callbackCount++
+			mu.Unlock()
+		},
+	}
+
+	partition := &model.Partition{
+		ID:     "part1",
+		Timers: []*model.Timer{timer},
+	}
+
+	tracker := &mockTracker{
+		claimRecurringFiring: func(id string, scheduledAt time.Time, lockTTL time.Duration) int {
+			mu.Lock()
+			defer mu.Unlock()
+			claimCount++
+			if claimCount == 1 {
+				return RecurringBusy
+			}
+			return RecurringClaimed
+		},
+	}
+
+	m := NewManager(partition, tracker, &mockScheduleTracker{})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go m.StartTimers(ctx)
+	time.Sleep(160 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if claimCount < 2 {
+		t.Fatalf("expected retry after busy claim, got %d claims", claimCount)
+	}
+	if callbackCount == 0 {
+		t.Fatal("expected callback after busy fence cleared")
+	}
+}
+
+func TestManager_StartTimers_Recurring_ReleasesFence(t *testing.T) {
+	var mu sync.Mutex
+	releaseCount := 0
+
+	timer := &model.Timer{
+		ID:       "timer1",
+		Interval: 10 * time.Millisecond,
+		Once:     false,
+		Callback: func() {},
+	}
+
+	partition := &model.Partition{
+		ID:     "part1",
+		Timers: []*model.Timer{timer},
+	}
+
+	tracker := &mockTracker{
+		releaseRecurringFiring: func(id string, scheduledAt time.Time) bool {
+			mu.Lock()
+			releaseCount++
+			mu.Unlock()
+			return true
+		},
+	}
+
+	m := NewManager(partition, tracker, &mockScheduleTracker{})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go m.StartTimers(ctx)
+	time.Sleep(50 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if releaseCount == 0 {
+		t.Fatal("expected recurring callback to release execution fence")
 	}
 }
