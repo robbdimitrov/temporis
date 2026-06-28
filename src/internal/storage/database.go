@@ -10,11 +10,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type PostgresStore struct {
+type DatabaseStore struct {
 	pool *pgxpool.Pool
 }
 
-func NewPostgresStore(url string) (*PostgresStore, error) {
+func NewDatabaseStore(url string) (*DatabaseStore, error) {
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, url)
 	if err != nil {
@@ -23,15 +23,15 @@ func NewPostgresStore(url string) (*PostgresStore, error) {
 	if err := pool.Ping(ctx); err != nil {
 		return nil, err
 	}
-	return &PostgresStore{pool: pool}, nil
+	return &DatabaseStore{pool: pool}, nil
 }
 
-func (s *PostgresStore) Close() error {
+func (s *DatabaseStore) Close() error {
 	s.pool.Close()
 	return nil
 }
 
-func (s *PostgresStore) GetPartitions(ctx context.Context) ([]*model.Partition, error) {
+func (s *DatabaseStore) GetPartitions(ctx context.Context) ([]*model.Partition, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	rows, err := s.pool.Query(ctx, `
@@ -93,7 +93,7 @@ func countTimers(partitions []*model.Partition) int {
 // ScheduleOnce atomically records the first pick-up time for a once-timer and
 // returns it. Subsequent calls return the already-set value unchanged, so the
 // target fire time is stable across partition rebalances.
-func (s *PostgresStore) ScheduleOnce(ctx context.Context, timerID string) (time.Time, error) {
+func (s *DatabaseStore) ScheduleOnce(ctx context.Context, timerID string) (time.Time, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	var scheduledAt time.Time
@@ -106,7 +106,7 @@ func (s *PostgresStore) ScheduleOnce(ctx context.Context, timerID string) (time.
 	return scheduledAt, err
 }
 
-func (s *PostgresStore) ListenForChanges(ctx context.Context, onNotify func()) {
+func (s *DatabaseStore) ListenForChanges(ctx context.Context, onNotify func()) {
 	for {
 		if ctx.Err() != nil {
 			return

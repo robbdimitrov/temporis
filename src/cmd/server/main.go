@@ -28,19 +28,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	pgStore, err := storage.NewPostgresStore(cfg.DatabaseURL)
+	database, err := storage.NewDatabaseStore(cfg.DatabaseURL)
 	if err != nil {
 		slog.Error("Failed to init database", "error", err)
 		os.Exit(1)
 	}
-	defer pgStore.Close()
+	defer database.Close()
 
-	valkeyStore, err := storage.NewValkeyStore(cfg.CacheURL)
+	cache, err := storage.NewCacheStore(cfg.CacheURL)
 	if err != nil {
 		slog.Error("Failed to init cache", "error", err)
 		os.Exit(1)
 	}
-	defer valkeyStore.Close()
+	defer cache.Close()
 
 	gossipMgr, err := gossip.NewGossipManager(cfg.GossipPort, cfg.ServiceName)
 	if err != nil {
@@ -49,7 +49,7 @@ func main() {
 	}
 	defer gossipMgr.Shutdown()
 
-	svc, err := service.NewService(cfg, pgStore, valkeyStore, gossipMgr)
+	svc, err := service.NewService(cfg, database, cache, gossipMgr)
 	if err != nil {
 		slog.Error("Failed to init service", "error", err)
 		os.Exit(1)

@@ -9,11 +9,11 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-type ValkeyStore struct {
+type CacheStore struct {
 	client *redis.Client
 }
 
-func NewValkeyStore(url string) (*ValkeyStore, error) {
+func NewCacheStore(url string) (*CacheStore, error) {
 	opts, err := redis.ParseURL(url)
 	if err != nil {
 		return nil, err
@@ -22,20 +22,20 @@ func NewValkeyStore(url string) (*ValkeyStore, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := client.Ping(ctx).Err(); err != nil {
-		slog.Error("Failed to ping Valkey", "error", err)
+		slog.Error("Failed to ping cache", "error", err)
 		return nil, err
 	}
-	slog.Info("Connected to Valkey", "addr", opts.Addr)
-	return &ValkeyStore{client}, nil
+	slog.Info("Connected to cache", "addr", opts.Addr)
+	return &CacheStore{client}, nil
 }
 
-func (s *ValkeyStore) Close() error {
+func (s *CacheStore) Close() error {
 	return s.client.Close()
 }
 
 // HasFired checks whether a one-time timer has already been claimed.
 // Non-atomic: used only as a pre-check to skip the interval wait early.
-func (s *ValkeyStore) HasFired(ctx context.Context, timerID string) bool {
+func (s *CacheStore) HasFired(ctx context.Context, timerID string) bool {
 	for i := 0; i < 3; i++ {
 		opCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		exists, err := s.client.Exists(opCtx, "fired:"+timerID).Result()
@@ -53,7 +53,7 @@ func (s *ValkeyStore) HasFired(ctx context.Context, timerID string) bool {
 // ClaimFiring atomically claims the firing slot for a one-time timer (SET NX).
 // Returns true if this caller won the claim. Returns false on failure to avoid
 // firing without a confirmed claim.
-func (s *ValkeyStore) ClaimFiring(ctx context.Context, timerID string, t time.Time) bool {
+func (s *CacheStore) ClaimFiring(ctx context.Context, timerID string, t time.Time) bool {
 	for i := 0; i < 3; i++ {
 		opCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		claimed, err := s.client.SetNX(opCtx, "fired:"+timerID, t.UnixNano(), 0).Result()
@@ -70,7 +70,7 @@ func (s *ValkeyStore) ClaimFiring(ctx context.Context, timerID string, t time.Ti
 
 // RecordFiring appends a firing timestamp to the history list of a recurring
 // timer, keeping the last 10 entries.
-func (s *ValkeyStore) RecordFiring(ctx context.Context, timerID string, t time.Time) bool {
+func (s *CacheStore) RecordFiring(ctx context.Context, timerID string, t time.Time) bool {
 	for i := 0; i < 3; i++ {
 		opCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		pipe := s.client.Pipeline()
@@ -90,7 +90,7 @@ func (s *ValkeyStore) RecordFiring(ctx context.Context, timerID string, t time.T
 }
 
 // GetLastFirings returns the last 10 firing times for a recurring timer.
-func (s *ValkeyStore) GetLastFirings(ctx context.Context, timerID string) ([]time.Time, error) {
+func (s *CacheStore) GetLastFirings(ctx context.Context, timerID string) ([]time.Time, error) {
 	opCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	timestamps, err := s.client.LRange(opCtx, "firings:"+timerID, 0, 9).Result()

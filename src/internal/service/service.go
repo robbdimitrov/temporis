@@ -15,8 +15,8 @@ import (
 
 type Service struct {
 	cfg         *config.Config
-	pgStore     *storage.PostgresStore
-	valkeyStore *storage.ValkeyStore
+	database    *storage.DatabaseStore
+	cache       *storage.CacheStore
 	gossipMgr   *gossip.GossipManager
 	hashRing    *hash.ConsistentHash
 	partitions  map[string]*partition.Manager
@@ -25,12 +25,12 @@ type Service struct {
 	wg          sync.WaitGroup
 }
 
-func NewService(cfg *config.Config, pgStore *storage.PostgresStore, valkeyStore *storage.ValkeyStore, gossipMgr *gossip.GossipManager) (*Service, error) {
+func NewService(cfg *config.Config, database *storage.DatabaseStore, cache *storage.CacheStore, gossipMgr *gossip.GossipManager) (*Service, error) {
 	hashRing := hash.NewConsistentHash(100)
 	return &Service{
 		cfg:         cfg,
-		pgStore:     pgStore,
-		valkeyStore: valkeyStore,
+		database:    database,
+		cache:       cache,
 		gossipMgr:   gossipMgr,
 		hashRing:    hashRing,
 		partitions:  make(map[string]*partition.Manager),
@@ -53,8 +53,8 @@ func (s *Service) Run(ctx context.Context) error {
 		}
 	}
 
-	// Listen for Postgres notifications
-	go s.pgStore.ListenForChanges(ctx, func() {
+	// Listen for database notifications.
+	go s.database.ListenForChanges(ctx, func() {
 		slog.Info("Database changed, executing instant sync...")
 		triggerSync()
 	})
@@ -101,8 +101,8 @@ func (s *Service) syncWithCluster(ctx context.Context) {
 		s.hashRing.RemoveNode(node)
 	}
 
-	// Step 4: Load partitions from PostgreSQL
-	partitions, err := s.pgStore.GetPartitions(ctx)
+	// Step 4: Load partitions from the database.
+	partitions, err := s.database.GetPartitions(ctx)
 	if err != nil {
 		slog.Error("Failed to load partitions", "error", err)
 		return
@@ -116,7 +116,7 @@ func (s *Service) syncWithCluster(ctx context.Context) {
 		slog.Info("Partition assigned", "partition_id", p.ID, "node", owner, "timer_count", len(p.Timers))
 		if owner == s.cfg.ServiceName {
 			slog.Info("This pod owns partition", "partition_id", p.ID)
-			newPartitions[p.ID] = partition.NewManager(p, s.valkeyStore, s.pgStore)
+			newPartitions[p.ID] = partition.NewManager(p, s.cache, s.database)
 		}
 	}
 
