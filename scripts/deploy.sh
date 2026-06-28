@@ -2,7 +2,7 @@
 set -euo pipefail
 
 NS="${NS:-temporis}"
-IMAGE_NAME="${IMAGE_NAME:-temporis:latest}"
+IMAGE_NAME="${IMAGE_NAME:-temporis/backend:latest}"
 
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then

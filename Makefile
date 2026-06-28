@@ -21,7 +21,7 @@ fmt:
 	cd src && go fmt ./...
 
 docker:
-	cd src && docker build -t $(IMAGE_NAME) .
+	cd src && docker build -t temporis/backend:latest .
 
 clean:
 	rm -f $(APP_NAME)

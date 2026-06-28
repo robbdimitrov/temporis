@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: temporis
-          image: temporis:latest
+          image: temporis/backend:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 7946
