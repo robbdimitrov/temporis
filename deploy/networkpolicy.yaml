@@ -1,52 +1,45 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: default-deny-all
+  name: default-deny-egress
 spec:
   podSelector: {}
   policyTypes:
-    - Ingress
+    - Egress
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: temporis-policy
+  name: allow-dns-egress
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-temporis-egress
 spec:
   podSelector:
     matchLabels:
       app: temporis
   policyTypes:
-    - Ingress
     - Egress
-  ingress:
-    # Allow temporis pods to communicate with each other on gossip port 7946
-    - from:
-        - podSelector:
-            matchLabels:
-              app: temporis
-      ports:
-        - protocol: TCP
-          port: 7946
-        - protocol: UDP
-          port: 7946
   egress:
-    # Allow temporis pods to gossip with each other
-    - to:
-        - podSelector:
-            matchLabels:
-              app: temporis
-      ports:
-        - protocol: TCP
-          port: 7946
-        - protocol: UDP
-          port: 7946
-    # Allow DNS resolution
-    - ports:
-        - protocol: UDP
-          port: 53
-        - protocol: TCP
-          port: 53
-    # Allow egress to database and cache
     - to:
         - podSelector:
             matchLabels:
@@ -61,19 +54,27 @@ spec:
       ports:
         - protocol: TCP
           port: 6379
+    - to:
+        - podSelector:
+            matchLabels:
+              app: temporis
+      ports:
+        - protocol: TCP
+          port: 7946
+        - protocol: UDP
+          port: 7946
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: datastore-policy
+  name: allow-database-from-temporis
 spec:
   podSelector:
-    matchExpressions:
-      - { key: app, operator: In, values: [database, cache] }
+    matchLabels:
+      app: database
   policyTypes:
     - Ingress
   ingress:
-    # Allow ingress to database only from temporis
     - from:
         - podSelector:
             matchLabels:
@@ -81,7 +82,18 @@ spec:
       ports:
         - protocol: TCP
           port: 5432
-    # Allow ingress to cache only from temporis
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-cache-from-temporis
+spec:
+  podSelector:
+    matchLabels:
+      app: cache
+  policyTypes:
+    - Ingress
+  ingress:
     - from:
         - podSelector:
             matchLabels:

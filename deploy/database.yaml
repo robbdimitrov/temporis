@@ -19,9 +19,16 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 5432
-          envFrom:
-            - secretRef:
-                name: database-secret
+          env:
+            - name: POSTGRES_DB
+              value: postgres
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: timer-secret
+                  key: database-password
           volumeMounts:
             - mountPath: /var/lib/postgresql
               name: database-data
@@ -50,15 +57,3 @@ spec:
       targetPort: 5432
   selector:
     app: database
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: database-secret
-  labels:
-    app: database
-type: Opaque
-stringData:
-  POSTGRES_DB: postgres
-  POSTGRES_USER: postgres
-  POSTGRES_PASSWORD: securepassword123

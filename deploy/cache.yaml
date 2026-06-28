@@ -16,10 +16,16 @@ spec:
       containers:
         - name: cache
           image: valkey/valkey:8.0-alpine
-          command: ["valkey-server", "--requirepass", "securevalkey123"]
+          command: ["sh", "-c", "exec valkey-server --requirepass \"$CACHE_PASSWORD\""]
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 6379
+          env:
+            - name: CACHE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: timer-secret
+                  key: cache-password
           resources:
             requests:
               memory: "128Mi"
