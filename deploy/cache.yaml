@@ -1,20 +1,20 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: valkey
+  name: cache
 spec:
-  serviceName: valkey
+  serviceName: cache
   replicas: 1
   selector:
     matchLabels:
-      app: valkey
+      app: cache
   template:
     metadata:
       labels:
-        app: valkey
+        app: cache
     spec:
       containers:
-        - name: valkey
+        - name: cache
           image: valkey/valkey:8.0-alpine
           command: ["valkey-server", "--requirepass", "securevalkey123"]
           imagePullPolicy: IfNotPresent
@@ -31,10 +31,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: valkey
+  name: cache
 spec:
   ports:
     - port: 6379
       targetPort: 6379
   selector:
-    app: valkey
+    app: cache

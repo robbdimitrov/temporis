@@ -44,16 +44,16 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
-            - name: POSTGRES_URL
+            - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
                   name: timer-secret
-                  key: postgres-url
-            - name: VALKEY_URL
+                  key: database-url
+            - name: CACHE_URL
               valueFrom:
                 secretKeyRef:
                   name: timer-secret
-                  key: valkey-url
+                  key: cache-url
             - name: SEED_NODE
               value: temporis.temporis.svc.cluster.local:7946
 ---
@@ -76,5 +76,5 @@ metadata:
   name: timer-secret
 type: Opaque
 stringData:
-  postgres-url: "postgres://postgres:securepassword123@postgres:5432/temporis?sslmode=disable"
-  valkey-url: "redis://:securevalkey123@valkey:6379"
+  database-url: "postgres://postgres:securepassword123@database:5432/temporis?sslmode=disable"
+  cache-url: "redis://:securevalkey123@cache:6379"

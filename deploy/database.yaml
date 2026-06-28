@@ -1,39 +1,39 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: postgres
+  name: database
 spec:
-  serviceName: "postgres"
+  serviceName: "database"
   replicas: 1
   selector:
     matchLabels:
-      app: postgres
+      app: database
   template:
     metadata:
       labels:
-        app: postgres
+        app: database
     spec:
       containers:
-        - name: postgres
+        - name: database
           image: postgres:18-alpine
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 5432
           envFrom:
             - secretRef:
-                name: postgres-secret
+                name: database-secret
           volumeMounts:
             - mountPath: /var/lib/postgresql
-              name: postgres-data
+              name: database-data
             - mountPath: /docker-entrypoint-initdb.d/
               name: init-script
       volumes:
         - name: init-script
           configMap:
-            name: postgres-init-script
+            name: database-init-script
   volumeClaimTemplates:
     - metadata:
-        name: postgres-data
+        name: database-data
       spec:
         accessModes: ["ReadWriteOnce"]
         resources:
@@ -43,20 +43,20 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: postgres
+  name: database
 spec:
   ports:
     - port: 5432
       targetPort: 5432
   selector:
-    app: postgres
+    app: database
 ---
 apiVersion: v1
 kind: Secret
 metadata:
-  name: postgres-secret
+  name: database-secret
   labels:
-    app: postgres
+    app: database
 type: Opaque
 stringData:
   POSTGRES_DB: postgres

@@ -46,18 +46,18 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
-    # Allow egress to Postgres and Valkey
+    # Allow egress to database and cache
     - to:
         - podSelector:
             matchLabels:
-              app: postgres
+              app: database
       ports:
         - protocol: TCP
           port: 5432
     - to:
         - podSelector:
             matchLabels:
-              app: valkey
+              app: cache
       ports:
         - protocol: TCP
           port: 6379
@@ -69,11 +69,11 @@ metadata:
 spec:
   podSelector:
     matchExpressions:
-      - { key: app, operator: In, values: [postgres, valkey] }
+      - { key: app, operator: In, values: [database, cache] }
   policyTypes:
     - Ingress
   ingress:
-    # Allow ingress to Postgres only from Temporis
+    # Allow ingress to database only from temporis
     - from:
         - podSelector:
             matchLabels:
@@ -81,7 +81,7 @@ spec:
       ports:
         - protocol: TCP
           port: 5432
-    # Allow ingress to Valkey only from Temporis
+    # Allow ingress to cache only from temporis
     - from:
         - podSelector:
             matchLabels:

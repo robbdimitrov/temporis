@@ -25,7 +25,7 @@ across partitions without overlap.
 ## Directory Structure
 
 - `src/`: Go application code (`cmd`, `internal`), `go.mod`, and `Dockerfile`.
-- `deploy/`: Kubernetes manifests (temporis, postgres, valkey).
+- `deploy/`: Kubernetes manifests (temporis, database, cache).
 - `pkg/database/`: Database initialization scripts (`schema.sql`).
 - `scripts/`: Auxiliary scripts like `deploy.sh`.
 - `Makefile`: Project tasks and build targets.

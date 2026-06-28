@@ -28,16 +28,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	pgStore, err := storage.NewPostgresStore(cfg.PostgresURL)
+	pgStore, err := storage.NewPostgresStore(cfg.DatabaseURL)
 	if err != nil {
-		slog.Error("Failed to init postgres", "error", err)
+		slog.Error("Failed to init database", "error", err)
 		os.Exit(1)
 	}
 	defer pgStore.Close()
 
-	valkeyStore, err := storage.NewValkeyStore(cfg.ValkeyURL)
+	valkeyStore, err := storage.NewValkeyStore(cfg.CacheURL)
 	if err != nil {
-		slog.Error("Failed to init valkey", "error", err)
+		slog.Error("Failed to init cache", "error", err)
 		os.Exit(1)
 	}
 	defer valkeyStore.Close()
