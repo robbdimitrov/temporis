@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -56,21 +57,33 @@ func main() {
 	}
 
 	done := make(chan struct{})
+	serviceErrCh := make(chan error, 1)
+	var serviceFailed atomic.Bool
 	go func() {
 		defer close(done)
 		slog.Info("Starting service...")
 		if err := svc.Run(ctx); err != nil {
+			serviceFailed.Store(true)
 			slog.Error("Service error", "error", err)
+			serviceErrCh <- err
 		}
 	}()
 
 	// Start HTTP server for probes
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		if serviceFailed.Load() {
+			http.Error(w, "service failed", http.StatusServiceUnavailable)
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
 	})
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		if !svc.Ready() {
+			http.Error(w, "not ready", http.StatusServiceUnavailable)
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ready"))
 	})
@@ -87,8 +100,12 @@ func main() {
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	<-sigCh
-	slog.Info("Shutting down... sending cancel to service")
+	select {
+	case <-sigCh:
+		slog.Info("Shutting down... sending cancel to service")
+	case <-serviceErrCh:
+		slog.Info("Service failed, shutting down...")
+	}
 	cancel()
 
 	// Shut down probe server

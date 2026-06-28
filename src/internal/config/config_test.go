@@ -33,8 +33,20 @@ func TestLoad(t *testing.T) {
 }
 
 func TestParseInt_Invalid(t *testing.T) {
-	res := parseInt("invalid")
+	res, err := parseInt("invalid")
+	if err == nil {
+		t.Fatal("expected error for invalid int")
+	}
 	if res != 0 {
 		t.Errorf("expected 0 for invalid int, got %v", res)
+	}
+}
+
+func TestLoad_InvalidGossipPort(t *testing.T) {
+	os.Setenv("GOSSIP_PORT", "invalid")
+	defer os.Clearenv()
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected error for invalid GOSSIP_PORT")
 	}
 }

@@ -74,6 +74,9 @@ func (s *DatabaseStore) GetPartitions(ctx context.Context) ([]*model.Partition, 
 			p.Timers = append(p.Timers, timer)
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	result := make([]*model.Partition, 0, len(partitions))
 	for _, p := range partitions {
 		result = append(result, p)
